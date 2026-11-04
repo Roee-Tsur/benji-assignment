@@ -39,6 +39,7 @@ class Endpoint(Base):
 
 class Event(Base):
     __tablename__ = "events"
+    __table_args__ = (Index("ix_events_created_at_id", "created_at", "id"),)  # newest-first listing
 
     id: Mapped[str] = mapped_column(primary_key=True)
     type: Mapped[EventType] = mapped_column(_enum(EventType))

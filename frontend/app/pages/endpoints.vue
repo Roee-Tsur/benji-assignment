@@ -6,13 +6,36 @@ import { eventTypes } from '~/domain/eventTypes'
 useHead({ title: 'Endpoints' })
 
 const endpoints = useEndpoints()
+const setEnabled = useSetEndpointEnabled()
+const replayFailed = useReplayFailed()
+const toast = useToast()
 const creating = ref(false)
+
+function toggle(endpoint: Endpoint, enabled: boolean) {
+  setEnabled.mutate({ endpointId: endpoint.id, enabled }, {
+    onSuccess: () => toast.add(enabled
+      ? { title: 'Endpoint enabled', description: 'Its failed deliveries stay failed until you replay them.', color: 'success', icon: 'i-lucide-circle-check' }
+      : { title: 'Endpoint disabled', description: 'Its pending deliveries were marked failed. Enable it and use "Replay failed" to recover them.', color: 'neutral', icon: 'i-lucide-circle-pause' })
+  })
+}
+
+function replay(endpoint: Endpoint) {
+  replayFailed.mutate({ endpointId: endpoint.id }, {
+    onSuccess: ({ replayed }) => toast.add({
+      title: replayed === 0 ? 'No failed deliveries to replay' : `Replayed ${replayed} failed ${replayed === 1 ? 'delivery' : 'deliveries'}`,
+      color: replayed === 0 ? 'neutral' : 'success',
+      icon: 'i-lucide-rotate-ccw',
+      actions: replayed === 0 ? undefined : [{ label: 'View deliveries', to: { path: '/deliveries', query: { endpoint: endpoint.id } } }]
+    })
+  })
+}
 
 const columns: TableColumn<Endpoint>[] = [
   { accessorKey: 'url', header: 'URL' },
   { accessorKey: 'event_types', header: 'Event types' },
   { accessorKey: 'enabled', header: 'Status' },
-  { accessorKey: 'created_at', header: 'Created' }
+  { accessorKey: 'created_at', header: 'Created' },
+  { id: 'actions', header: 'Actions' }
 ]
 </script>
 
@@ -58,11 +81,13 @@ const columns: TableColumn<Endpoint>[] = [
           </div>
         </template>
         <template #enabled-cell="{ row }">
-          <UBadge
-            v-bind="row.original.enabled
-              ? { label: 'Enabled', color: 'success', icon: 'i-lucide-circle-check' }
-              : { label: 'Disabled', color: 'neutral', icon: 'i-lucide-circle-pause' }"
-            variant="subtle"
+          <!-- The visible label carries the state as text; the accessible name repeats it and says which endpoint. -->
+          <USwitch
+            :model-value="row.original.enabled"
+            :label="row.original.enabled ? 'Enabled' : 'Disabled'"
+            :aria-label="`${row.original.enabled ? 'Enabled' : 'Disabled'}: ${row.original.url}`"
+            :loading="setEnabled.isPendingFor(row.original.id)"
+            @update:model-value="enabled => toggle(row.original, enabled)"
           />
         </template>
         <template #created_at-cell="{ row }">
@@ -71,6 +96,26 @@ const columns: TableColumn<Endpoint>[] = [
             date-style="medium"
             time-style="short"
           />
+        </template>
+        <template #actions-cell="{ row }">
+          <UTooltip
+            :text="row.original.enabled ? 'Retry every failed delivery with a fresh attempt budget' : 'Enable the endpoint to replay its failed deliveries'"
+          >
+            <!-- A wrapper, so the tooltip still shows while the button is disabled. -->
+            <span class="inline-flex">
+              <UButton
+                label="Replay failed"
+                icon="i-lucide-rotate-ccw"
+                color="neutral"
+                variant="outline"
+                size="sm"
+                :aria-label="`Replay failed deliveries of ${row.original.url}`"
+                :disabled="!row.original.enabled"
+                :loading="replayFailed.isPendingFor(row.original.id)"
+                @click="replay(row.original)"
+              />
+            </span>
+          </UTooltip>
         </template>
       </UTable>
 

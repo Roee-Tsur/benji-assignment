@@ -4,7 +4,7 @@ from fastapi import APIRouter, Header, HTTPException, Response, status
 
 from webhooks.api.deps import RuntimeDep, SessionDep
 from webhooks.api.problems import Problem, ValidationProblem, problem_responses
-from webhooks.api.schemas import EventCreate, EventSubmitted
+from webhooks.api.schemas import EventCreate, EventOut, EventSubmitted
 from webhooks.services import events
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -53,8 +53,17 @@ async def submit_event(
     )
     if submitted.deduplicated:
         response.status_code = status.HTTP_200_OK
-    return EventSubmitted.from_model(
+    return EventSubmitted.from_submitted(
         submitted.event,
         delivery_count=submitted.delivery_count,
         deduplicated=submitted.deduplicated,
     )
+
+
+@router.get("")
+async def list_events(session: SessionDep) -> list[EventOut]:
+    """The newest 20, with their fan-out counts."""
+    return [
+        EventOut.from_model(recent.event, delivery_count=recent.delivery_count)
+        for recent in await events.list_recent_events(session)
+    ]
