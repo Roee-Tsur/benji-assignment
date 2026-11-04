@@ -33,3 +33,14 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Review:** `/code-review` found 9 issues. It fixed 7: request errors other than transport errors left a delivery stuck `in progress`, problem responses dropped the `Allow` header, and 5 smaller cleanups. It skipped 2 that belong to later tickets: shutdown mid-attempt (#4) and the concurrent same-key race (#3).
 - **Output:** `backend/` (47 pytest tests, ruff, strict pyright) and root `Makefile` targets.
 
+
+### 3. Ticket #2: frontend walking skeleton (2026-11-04)
+
+- **Asked:** run `/work-ticket 2` from the ticket #1 session, stacked on the unmerged #1 branch (a GitHub incident delayed the merge): the Nuxt 4 SPA, a typed API layer, the Vue Query state layer, the app shell, minimal pages, and the Vitest + MSW harness.
+- **Process:** the AI scaffolded from the official Nuxt UI starter and resolved the open choices on its own, without stopping for approval:
+  - a `/api` proxy instead of CORS on the backend;
+  - schema generation straight from the FastAPI app, so the stale check needs no running server;
+  - closed sets as `Record<…>` tables keyed by the generated enums, so a new status or event type fails typecheck.
+- **Checks beyond the tests:** it ran the acceptance flow in the browser (create, secret shown once, trigger, `succeeded`), triggered a second event from curl to show polling picks it up without a reload, changed a backend schema temporarily to see `gen:api --check` fail, and checked the new ESLint layering rule against deliberate violations.
+- **Review:** `/code-review` found 8 issues, and it fixed all of them. The main ones: `mutateAsync` rejections went unhandled, a create that resolved after its modal closed could bring back the secret, one failed poll hid the loaded rows, and the generated schema depended on the local backend `.env`.
+- **Output:** `frontend/` (16 Vitest tests in Node and Nuxt projects, ESLint, `vue-tsc` over app and tests), `make dev` plus frontend coverage in `make lint` / `typecheck` / `test`.
