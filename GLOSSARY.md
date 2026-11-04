@@ -19,7 +19,7 @@ The per-endpoint shared secret used to sign every notification sent to that endp
 _Avoid_: API key, token
 
 **Disabled endpoint**:
-An endpoint that receives no new deliveries until it is enabled again.
+An endpoint that receives no new deliveries; any deliveries still pending for it fail when it is disabled. Nothing is delivered automatically when it is enabled again.
 _Avoid_: Paused, inactive, deleted
 
 ### Delivering
@@ -37,13 +37,21 @@ The obligation to get one event to one endpoint; there is at most one delivery p
 _Avoid_: Job, task, send
 
 **Attempt**:
-One HTTP request made while trying to fulfil a delivery, with its outcome.
+One HTTP request made while trying to fulfil a delivery, with its outcome. An **interrupted** attempt is one whose outcome was never recorded because the worker lost it mid-flight.
 _Avoid_: Try, retry, request
 
+**Attempt budget**:
+How many attempts a delivery may make before it fails; each replay grants a fresh budget.
+_Avoid_: Max retries, retry limit
+
 **Delivery status**:
-Where a delivery stands: **pending** (waiting for its next attempt), **in progress** (an attempt is underway), **succeeded** (an attempt was accepted), or **failed** (attempts are exhausted or it can no longer be attempted).
+Where a delivery stands: **pending** (waiting for its next attempt), **in progress** (an attempt is underway), **succeeded** (an attempt was accepted), or **failed** (it will not be attempted again unless replayed).
 _Avoid_: State, result
 
+**Failure reason**:
+Why a delivery failed: its attempt budget was exhausted, its endpoint was disabled, or its endpoint reported it is gone for good.
+_Avoid_: Error, last error
+
 **Replay**:
-Returning a failed delivery to pending so it is attempted again, continuing the same delivery's attempt history.
+Returning a failed delivery to pending with a fresh attempt budget, continuing the same delivery's attempt history. Only failed deliveries of enabled endpoints can be replayed.
 _Avoid_: Retry, resend, redeliver
