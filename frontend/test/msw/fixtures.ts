@@ -1,4 +1,4 @@
-import type { Delivery, Endpoint } from '../../app/api/client'
+import type { Delivery, Endpoint, Event } from '../../app/api/client'
 
 export const endpoint: Endpoint = {
   id: 'ep_1',
@@ -23,6 +23,17 @@ export function delivery(overrides: Partial<Delivery> = {}): Delivery {
     next_attempt_at: '2026-11-04T10:00:00Z',
     created_at: '2026-11-04T10:00:00Z',
     updated_at: '2026-11-04T10:00:01Z',
+    ...overrides
+  }
+}
+
+export function event(overrides: Partial<Event> = {}): Event {
+  return {
+    id: 'evt_1',
+    type: 'reward_transaction_created',
+    idempotency_key: 'key-1',
+    created_at: '2026-11-04T10:00:00Z',
+    delivery_count: 1,
     ...overrides
   }
 }

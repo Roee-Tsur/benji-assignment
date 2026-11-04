@@ -1,7 +1,7 @@
 import { HttpResponse } from 'msw'
 import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import { ApiError } from '../../app/api/errors'
-import { endpoint } from '../msw/fixtures'
+import { delivery, endpoint } from '../msw/fixtures'
 import { http } from '../msw/http'
 import { useMockApi } from '../msw/server'
 import { clearQueryCache, withSetup } from './helpers'
@@ -52,5 +52,64 @@ describe('useCreateEndpoint', () => {
 
     expect(error).toBeInstanceOf(ApiError)
     expect(error).toMatchObject({ kind: 'problem', status: 422, message: 'url: Input should be a valid URL' })
+  })
+})
+
+describe('useSetEndpointEnabled', () => {
+  it('refetches deliveries after disabling, so the pending ones show as failed', async () => {
+    let disabled = false
+    server.use(
+      http.patch('/endpoints/{endpoint_id}', async ({ request, response }) => {
+        disabled = !(await request.json()).enabled
+        return response(200).json({ ...endpoint, enabled: !disabled })
+      }),
+      http.get('/deliveries', ({ response }) => response(200).json([
+        delivery(disabled ? { status: 'failed', failure_reason: 'endpoint_disabled' } : { status: 'pending' })
+      ]))
+    )
+    const { deliveries, setEnabled } = await withSetup(() => ({ deliveries: useDeliveries(), setEnabled: useSetEndpointEnabled() }))
+    await expect.poll(() => deliveries.data.value?.[0]?.status).toBe('pending')
+
+    await setEnabled.mutateAsync({ endpointId: endpoint.id, enabled: false })
+
+    await expect.poll(() => deliveries.data.value?.[0]?.status).toBe('failed')
+  })
+
+  it('reports which endpoint has a request in flight', async () => {
+    let respond!: () => void
+    server.use(http.patch('/endpoints/{endpoint_id}', async ({ response }) => {
+      await new Promise<void>(resolve => (respond = resolve))
+      return response(200).json({ ...endpoint, enabled: false })
+    }))
+    const setEnabled = await withSetup(() => useSetEndpointEnabled())
+
+    const done = setEnabled.mutateAsync({ endpointId: 'ep_1', enabled: false })
+
+    await expect.poll(() => setEnabled.isPendingFor('ep_1')).toBe(true)
+    expect(setEnabled.isPendingFor('ep_2')).toBe(false)
+    await expect.poll(() => respond).toBeTypeOf('function')
+    respond()
+    await done
+    await expect.poll(() => setEnabled.isPendingFor('ep_1')).toBe(false)
+  })
+})
+
+describe('useReplayFailed', () => {
+  it('resolves to the replayed count and refetches deliveries', async () => {
+    let deliveryRequests = 0
+    server.use(
+      http.post('/endpoints/{endpoint_id}/replay-failed', ({ response }) => response(200).json({ replayed: 3 })),
+      http.get('/deliveries', ({ response }) => {
+        deliveryRequests++
+        return response(200).json([delivery()])
+      })
+    )
+    const { deliveries, replayFailed } = await withSetup(() => ({ deliveries: useDeliveries(), replayFailed: useReplayFailed() }))
+    await expect.poll(() => deliveries.data.value).toBeDefined()
+    const before = deliveryRequests
+
+    await expect(replayFailed.mutateAsync({ endpointId: endpoint.id })).resolves.toEqual({ replayed: 3 })
+
+    await expect.poll(() => deliveryRequests).toBeGreaterThan(before)
   })
 })
