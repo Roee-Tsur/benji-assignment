@@ -107,8 +107,9 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
 ### Staying accurate over time
 
 - The deliveries list is an infinite query. Each poll refetches **every loaded page**, not just the first, and "load more" bounds the cost.
-- An expanded row's detail query (payload and attempt log) polls on its own while its delivery is non-terminal.
-- The status count chips come from a separate aggregate query, so they're right regardless of paging.
+- The open delivery's detail query (payload and attempt log) polls on its own while the slideover is open: fast while the delivery is non-terminal, slowly once it has failed (a replay from elsewhere can revive it), and not at all once it has succeeded.
+- The status count chips come from a separate aggregate query (`GET /deliveries/counts`), so they're right regardless of paging.
+- The list API pages newest first by a keyset cursor on `(created_at, id)` (`GET /deliveries?cursor=…` returns `{items, next_cursor}`). A refetch recomputes each page's cursor from the page before it, so loaded pages stay contiguous as new deliveries arrive.
 - Every view reads the DB, which is also the queue, so there's no second source of truth to drift.
 - Making "live" visible:
   - rows briefly highlight when their status changes;
@@ -119,7 +120,7 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
 
 - **Endpoints**: list, create (signing secret shown once in a modal), enable/disable, and "replay failed" per endpoint.
 - **Events**: trigger form with a type picker and a JSON editor prefilled with a sample payload per type. The editor validates JSON live and has a "format" button. The idempotency key persists until the input changes or the user clicks "new key", so resubmitting visibly dedupes. Below it, a recent-events list with fan-out counts that drills down to its deliveries.
-- **Deliveries**: live table filtered by status and endpoint, with the filters held in the URL (`?status=failed&endpoint=…`) so views can be deep-linked and the back button works. It has status count chips and the newest 50 plus keyset "load more". Pending rows show "attempt 3/6 · next in 12s" (from `next_attempt_at`) and failed rows show their failure reason. Opening a delivery shows a slideover with its own URL, containing the payload, the attempt log, and Replay.
+- **Deliveries**: live table filtered by status and endpoint, with the filters held in the URL (`?status=failed&endpoint=…`) so views can be deep-linked and the back button works. `?event=…` narrows it to one event (the Events view's drill-down), and `?delivery=…` opens that delivery's slideover. It has status count chips and the newest 50 plus keyset "load more". Pending rows show "attempt 3/6 · next in 12s" (from `next_attempt_at`) and failed rows show their failure reason. Opening a delivery shows a slideover with its own URL, containing the payload, the attempt log, and Replay.
 
 ### Tests
 
@@ -156,11 +157,11 @@ Planned now; file and test links get filled in during the final docs-vs-code pas
 | Authenticated delivery | Standard Webhooks HMAC | pytest: signing + `standardwebhooks` interop ([test_signing.py](../backend/tests/test_signing.py)); mock receiver verification ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)) |
 | Replay-able failures | Failure reason + Replay / replay-failed | pytest: replay, replay-failed, 409s, flaky → failed → replay → succeeded ([test_replay.py](../backend/tests/test_replay.py)); disable and the claim re-check ([test_disable.py](../backend/tests/test_disable.py)); mock modes ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)); e2e 3 |
 | Unique delivery | Idempotency-Key, unique (event, endpoint), stable `webhook-id` | pytest: idempotency, constraint (resubmit, 422 mismatch, concurrent resubmit, and unique constraint: [test_events_api.py](../backend/tests/test_events_api.py), [test_app.py](../backend/tests/test_app.py)); e2e 2 |
-| Observable delivery | Deliveries view, attempt log | e2e 2, 3 |
+| Observable delivery | Deliveries view, attempt log | pytest: filters, keyset paging, counts ([test_deliveries_api.py](../backend/tests/test_deliveries_api.py)); Vitest: URL ↔ filter sync, slideover deep link ([deliveriesPage.test.ts](../frontend/test/nuxt/deliveriesPage.test.ts)); e2e 2, 3 |
 | Endpoint management, secret once | Endpoints view | e2e 1 |
 | Event trigger, dedup surfaced | Trigger form | e2e 2 |
-| Live delivery view | Polling all loaded pages + detail | e2e 2, 3; Vitest polling |
-| Attempt inspection, replay | Delivery slideover, optimistic replay | e2e 3; Vitest rollback |
+| Live delivery view | Polling all loaded pages + detail | Vitest: polling backs off when terminal and resumes, every loaded page refreshes, detail polling ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)), countdown and highlights ([deliveryProgress.test.ts](../frontend/test/unit/deliveryProgress.test.ts)); e2e 2, 3 |
+| Attempt inspection, replay | Delivery slideover, optimistic replay | Vitest: optimistic replay and rollback ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)); e2e 3 |
 | Async UX, consistent errors | Vue Query composables, `ApiError` | Vitest `ApiError` ([api-errors.test.ts](../frontend/test/unit/api-errors.test.ts), [endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)), trigger form |
 | API / state / UI separation | `api/`, `composables/`, components | Code layout; ESLint layering rule ([eslint.config.mjs](../frontend/eslint.config.mjs)) |
 
