@@ -115,4 +115,5 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Process:** two jobs (backend, frontend). The frontend job also installs uv, because `pnpm gen:api --check` reads the schema from the FastAPI app. All checks passed locally, and the stale check was proven locally by appending to `schema.d.ts` (exit 1) and restoring it (exit 0).
 - **Steered:** a GitHub Actions outage left the first run queued. The AI suggested finishing on local proof and keeping the PR a draft until a real run is green and a deliberately stale commit fails, and I agreed rather than block on GitHub.
 - **Review:** `/code-review` (low) found nothing.
-- **Output:** `.github/workflows/ci.yml`; draft PR pending the CI confirmation.
+- **Merged during the GitHub Actions incident:** I chose to merge on the local proof and assume the workflow works, rather than wait. Confirming it on GitHub (a green run, and a stale commit that fails) is a follow-up.
+- **Output:** `.github/workflows/ci.yml`, merged before its first run on GitHub.
