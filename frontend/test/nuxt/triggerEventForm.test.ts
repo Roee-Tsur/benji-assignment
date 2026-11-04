@@ -64,6 +64,19 @@ describe('TriggerEventForm', () => {
     expect(wrapper.text()).toContain('No new deliveries were created')
   })
 
+  it('keeps the key after leaving the page and coming back, so that resubmit is deduplicated too', async () => {
+    const submissions = acceptEvents()
+    const before = await mountSuspended(TriggerEventForm)
+    await submit(before, submissions)
+    before.unmount()
+
+    const after = await mountSuspended(TriggerEventForm)
+    await submit(after, submissions)
+
+    expect(submissions[1]!.key).toBe(submissions[0]!.key)
+    await expect.poll(() => after.text()).toContain('Duplicate submission')
+  })
+
   it('says when an event fanned out to no deliveries, and points at the endpoints', async () => {
     const submissions = acceptEvents({ deliveryCount: 0 })
     const wrapper = await mountSuspended(TriggerEventForm)

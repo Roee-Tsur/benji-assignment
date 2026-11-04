@@ -140,7 +140,14 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Where I steered:** I took two of them: the shared instructions file and the editor config. I dropped the one that would have marked my own workflow rules (AI usage log, one PR per ticket) as author-only. Reviewers will read and run the code, not write to the repo.
 - **Output:** the instructions moved to `AGENTS.md`, which Cursor reads, and `CLAUDE.md` now imports it with `@AGENTS.md`, so there is still one source. `.vscode/` (Cursor reads it too) recommends the Python, Ruff, Vue, ESLint and Tailwind extensions, points at `backend/.venv`, and runs ruff and ESLint fixes on save.
 
-### 15. Ticket #10: independent pre-submit review (2026-11-04)
+### 15. Ticket #29: idempotency key survives leaving Events (2026-11-04)
+
+- **Asked:** run `/work-ticket 29`, the one high-severity gap from the pre-submit review: README demo step 5 created a new event, because the trigger form's key was regenerated whenever the Events page unmounted.
+- **Where I steered:** I picked the fix from the issue's options: keep the key with the submission it belongs to in `sessionStorage` via VueUse, rather than reword the README, and kept the key rules unchanged.
+- **Process:** the new remount tests failed against the old composable and pass with `useSessionStorage`. In the app, on separate ports: trigger → Deliveries → Events → submit showed "Duplicate submission", a reload kept the key too, and changed data still got a new key. `/code-review` (low) found nothing.
+- **Output:** [useIdempotencyKey.ts](../frontend/app/composables/useIdempotencyKey.ts), with the remount tests and PLAN's Events bullet updated. README step 5 is true as written.
+
+### 16. Ticket #10: independent pre-submit review (2026-11-04)
 
 - **Asked:** run `/work-ticket 10` in a fresh session that did no build work: review the repo against the brief as a Benji reviewer would, run `/code-review` over the whole codebase, follow the README in a fresh clone, file each gap as an issue, and fix nothing.
 - **Where I steered:** the AI flagged that a fix-nothing ticket conflicts with the every-session AI usage entry. I chose a docs-only PR for this entry, and approved new `severity:*` labels.
