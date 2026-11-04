@@ -33,3 +33,18 @@ export function formatRelativeTime(iso: string, now: number): string {
   const [size, suffix] = units.find(([size]) => seconds >= size)!
   return `${Math.floor(seconds / size)}${suffix} ago`
 }
+
+/**
+ * A receiver's response body for display: pretty-printed when it is a JSON object or array,
+ * otherwise exactly as sent (plain text, HTML, or JSON cut off at the 2 KB capture limit).
+ */
+export function formatResponseBody(body: string): string {
+  if (body === '') return '(empty)'
+  try {
+    const parsed: unknown = JSON.parse(body)
+    if (typeof parsed === 'object' && parsed !== null) return JSON.stringify(parsed, null, 2)
+  } catch {
+    // Not JSON (or truncated): show it as sent.
+  }
+  return body
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatCount, formatMilliseconds, formatRelativeTime } from '../../app/domain/format'
+import { formatCount, formatMilliseconds, formatRelativeTime, formatResponseBody } from '../../app/domain/format'
 
 const now = Date.parse('2026-11-04T10:00:00Z')
 const ago = (seconds: number) => new Date(now - seconds * 1000).toISOString()
@@ -55,5 +55,24 @@ describe('formatCount', () => {
     [12_345, '12,345 deliveries']
   ])('%s → %s', (count, expected) => {
     expect(formatCount(count, 'delivery', 'deliveries')).toBe(expected)
+  })
+})
+
+describe('formatResponseBody', () => {
+  it('pretty-prints a JSON body', () => {
+    expect(formatResponseBody('{"ok":true,"mode":"flaky","seen":[1,2]}')).toBe('{\n  "ok": true,\n  "mode": "flaky",\n  "seen": [\n    1,\n    2\n  ]\n}')
+  })
+
+  it.each([
+    ['plain text', 'Internal Server Error'],
+    ['HTML', '<html><body>502 Bad Gateway</body></html>'],
+    ['JSON cut off at the 2 KB limit', '{"items":[{"id":1},{"id":'],
+    ['a bare JSON scalar', '42']
+  ])('leaves %s as sent', (_kind, body) => {
+    expect(formatResponseBody(body)).toBe(body)
+  })
+
+  it('says the body was empty, rather than showing nothing', () => {
+    expect(formatResponseBody('')).toBe('(empty)')
   })
 })
