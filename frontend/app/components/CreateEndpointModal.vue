@@ -2,6 +2,7 @@
 import type { FormError } from '@nuxt/ui'
 import { useClipboard } from '@vueuse/core'
 import type { EndpointCreated, EventType } from '~/api/client'
+import { endpointUrlError } from '~/domain/endpointUrl'
 import { eventTypeOptions } from '~/domain/eventTypes'
 
 const open = defineModel<boolean>('open', { required: true })
@@ -16,13 +17,17 @@ const created = ref<EndpointCreated>()
 const { copy, copied } = useClipboard({ legacy: true })
 
 function validate(): FormError[] {
-  return state.eventTypes.length === 0 ? [{ name: 'eventTypes', message: 'Pick at least one event type.' }] : []
+  const errors: FormError[] = []
+  const urlError = endpointUrlError(state.url)
+  if (urlError) errors.push({ name: 'url', message: urlError })
+  if (state.eventTypes.length === 0) errors.push({ name: 'eventTypes', message: 'Pick at least one event type.' })
+  return errors
 }
 
 // `mutate`, not `mutateAsync`: failures are already toasted, and its callback is dropped
 // if the modal closes (and resets the mutation) before the response arrives.
 function submit() {
-  createEndpoint.mutate({ url: state.url, event_types: state.eventTypes }, {
+  createEndpoint.mutate({ url: state.url.trim(), event_types: state.eventTypes }, {
     onSuccess: (endpoint) => {
       created.value = endpoint
     }
