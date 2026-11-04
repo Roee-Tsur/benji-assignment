@@ -34,7 +34,7 @@ async def submit_event(
         data=body.data,
         idempotency_key=idempotency_key,
         now=runtime.clock.now(),
-        attempt_budget=runtime.settings.webhook_retry_max_attempts,
+        attempt_budget=runtime.settings.retry_policy.max_attempts,
     )
     if submitted.deduplicated:
         response.status_code = status.HTTP_200_OK
