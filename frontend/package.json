@@ -1,0 +1,38 @@
+{
+  "name": "benji-webhooks-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "gen:api": "node scripts/gen-api.mjs",
+    "lint": "eslint .",
+    "typecheck": "nuxt typecheck",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@iconify-json/lucide": "^1.2.147",
+    "@nuxt/ui": "^4.12.0",
+    "@tanstack/vue-query": "^5.105.3",
+    "nuxt": "^4.6.4",
+    "openapi-fetch": "^0.17.0",
+    "tailwindcss": "^4.3.4"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "^1.17.0",
+    "@nuxt/test-utils": "^4.3.4",
+    "@vue/test-utils": "^2.5.1",
+    "eslint": "^10.14.0",
+    "eslint-plugin-better-tailwindcss": "^4.10.0",
+    "happy-dom": "^21.0.4",
+    "msw": "^2.15.0",
+    "openapi-msw": "^2.1.1",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.12",
+    "vue-tsc": "^3.3.14"
+  },
+  "packageManager": "pnpm@12.15.0"
+}
