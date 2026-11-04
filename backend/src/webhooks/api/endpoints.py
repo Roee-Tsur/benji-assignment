@@ -2,8 +2,14 @@ from fastapi import APIRouter
 
 from webhooks.api.deps import RuntimeDep, SessionDep
 from webhooks.api.problems import problem_responses
-from webhooks.api.schemas import EndpointCreate, EndpointCreated, EndpointOut, EndpointUpdate
-from webhooks.services import endpoints
+from webhooks.api.schemas import (
+    EndpointCreate,
+    EndpointCreated,
+    EndpointOut,
+    EndpointUpdate,
+    ReplayedFailed,
+)
+from webhooks.services import deliveries, endpoints
 
 router = APIRouter(prefix="/endpoints", tags=["endpoints"])
 
@@ -27,7 +33,24 @@ async def list_endpoints(session: SessionDep) -> list[EndpointOut]:
 
 @router.patch("/{endpoint_id}", responses=problem_responses(404, 422))
 async def update_endpoint(
-    endpoint_id: str, body: EndpointUpdate, session: SessionDep
+    endpoint_id: str, body: EndpointUpdate, session: SessionDep, runtime: RuntimeDep
 ) -> EndpointOut:
-    endpoint = await endpoints.set_enabled(session, endpoint_id, enabled=body.enabled)
+    """Disabling fails the endpoint's pending deliveries; enabling again delivers nothing."""
+    endpoint = await endpoints.set_enabled(
+        session, endpoint_id, enabled=body.enabled, now=runtime.clock.now()
+    )
     return EndpointOut.model_validate(endpoint)
+
+
+@router.post("/{endpoint_id}/replay-failed", responses=problem_responses(404, 409, 422))
+async def replay_failed(
+    endpoint_id: str, session: SessionDep, runtime: RuntimeDep
+) -> ReplayedFailed:
+    """Replays every failed delivery of the endpoint, e.g. after an outage. 409 if it's disabled."""
+    replayed = await deliveries.replay_failed(
+        session,
+        endpoint_id,
+        now=runtime.clock.now(),
+        attempt_budget=runtime.settings.retry_policy.max_attempts,
+    )
+    return ReplayedFailed(replayed=replayed)

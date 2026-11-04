@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import ColumnElement, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -10,7 +10,7 @@ from webhooks.domain.enums import AttemptOutcome, DeliveryStatus, FailureReason
 from webhooks.domain.retry_policy import RetryPolicy, classify
 from webhooks.ids import new_id
 from webhooks.models import Attempt, Delivery, Endpoint, Event
-from webhooks.services.errors import NotFoundError
+from webhooks.services.errors import NotFoundError, NotReplayableError
 
 MAX_RESPONSE_BODY_BYTES = 2048
 
@@ -93,13 +93,94 @@ async def get_signing_secret(session: AsyncSession, delivery_id: str) -> str | N
     return await session.scalar(query)
 
 
+async def replay(
+    session: AsyncSession, delivery_id: str, *, now: datetime, attempt_budget: int
+) -> None:
+    """Returns a failed delivery to pending with a fresh budget, in one conditional `UPDATE`.
+
+    Its `attempt_count` (and so the attempt numbering) and its id, the `webhook-id`, carry on.
+    """
+    replayed = await session.scalar(
+        update(Delivery)
+        .where(Delivery.id == delivery_id, *_replayable())
+        .values(_replayed(now, attempt_budget))
+        .returning(Delivery.id)
+    )
+    if replayed is not None:
+        await session.commit()
+        return
+    # The decision is made; these reads only explain it.
+    found = (
+        await session.execute(
+            select(Delivery.status, Delivery.endpoint_id).where(Delivery.id == delivery_id)
+        )
+    ).first()
+    await session.rollback()
+    if found is None:
+        raise NotFoundError("delivery", delivery_id)
+    status, endpoint_id = found
+    if status is not DeliveryStatus.FAILED:
+        raise NotReplayableError(
+            f"delivery {delivery_id!r} is {status}; only failed deliveries can be replayed"
+        )
+    raise _endpoint_disabled(endpoint_id)
+
+
+async def replay_failed(
+    session: AsyncSession, endpoint_id: str, *, now: datetime, attempt_budget: int
+) -> int:
+    """Replays every failed delivery of the endpoint in one conditional `UPDATE`."""
+    replayed = (
+        await session.scalars(
+            update(Delivery)
+            .where(Delivery.endpoint_id == endpoint_id, *_replayable())
+            .values(_replayed(now, attempt_budget))
+            .returning(Delivery.id)
+        )
+    ).all()
+    if replayed:
+        await session.commit()
+        return len(replayed)
+    enabled = await session.scalar(select(Endpoint.enabled).where(Endpoint.id == endpoint_id))
+    await session.rollback()
+    if enabled is None:
+        raise NotFoundError("endpoint", endpoint_id)
+    if not enabled:
+        raise _endpoint_disabled(endpoint_id)
+    return 0
+
+
+def _replayable() -> tuple[ColumnElement[bool], ...]:
+    """Failed, and its endpoint enabled: checked by the replay `UPDATE` itself."""
+    enabled_endpoints = select(Endpoint.id).where(Endpoint.enabled.is_(True))
+    return (Delivery.status == DeliveryStatus.FAILED, Delivery.endpoint_id.in_(enabled_endpoints))
+
+
+def _replayed(now: datetime, attempt_budget: int) -> dict[str, object]:
+    return {
+        "status": DeliveryStatus.PENDING,
+        "failure_reason": None,
+        "attempts_used": 0,
+        "attempt_budget": attempt_budget,
+        "next_attempt_at": now,
+        "updated_at": now,
+    }
+
+
+def _endpoint_disabled(endpoint_id: str) -> NotReplayableError:
+    return NotReplayableError(
+        f"endpoint {endpoint_id!r} is disabled; enable it before replaying its deliveries"
+    )
+
+
 async def claim_next(
     session: AsyncSession, *, now: datetime, lease_duration: timedelta
 ) -> ClaimedDelivery | None:
     """Claims the most overdue pending delivery with a single `UPDATE … RETURNING`.
 
     The `status = pending` condition is re-checked by the UPDATE itself, so two workers can
-    never claim the same row.
+    never claim the same row. The endpoint is re-checked after it, under the claim's write lock:
+    a delivery whose endpoint is disabled is failed instead of sent, and the next one is claimed.
     """
     due = (
         select(Delivery.id)
@@ -109,35 +190,38 @@ async def claim_next(
         .scalar_subquery()
     )
     token = new_id("lease")
-    claimed = (
-        await session.execute(
-            update(Delivery)
-            .where(Delivery.id == due, Delivery.status == DeliveryStatus.PENDING)
-            .values(
-                status=DeliveryStatus.IN_PROGRESS,
-                lease_token=token,
-                lease_expires_at=now + lease_duration,
-                updated_at=now,
+    while True:
+        claimed = (
+            await session.execute(
+                update(Delivery)
+                .where(Delivery.id == due, Delivery.status == DeliveryStatus.PENDING)
+                .values(
+                    status=DeliveryStatus.IN_PROGRESS,
+                    lease_token=token,
+                    lease_expires_at=now + lease_duration,
+                    updated_at=now,
+                )
+                .returning(Delivery.id, Delivery.attempts_used, Delivery.attempt_budget)
             )
-            .returning(Delivery.id, Delivery.attempts_used, Delivery.attempt_budget)
-        )
-    ).first()
-    if claimed is None:
-        await session.rollback()
-        return None
+        ).first()
+        if claimed is None:
+            await session.commit()  # keeps any deliveries failed along the way
+            return None
 
-    url, secret, body = (
-        await session.execute(
-            select(Endpoint.url, Endpoint.secret, Event.envelope)
-            .select_from(Delivery)
-            .join(Delivery.endpoint)
-            .join(Delivery.event)
-            .where(Delivery.id == claimed.id)
-        )
-    ).one()
-    await session.commit()
-    lease = Lease(claimed.id, token, claimed.attempts_used, claimed.attempt_budget)
-    return ClaimedDelivery(lease, now, url, secret, body)
+        enabled, url, secret, body = (
+            await session.execute(
+                select(Endpoint.enabled, Endpoint.url, Endpoint.secret, Event.envelope)
+                .select_from(Delivery)
+                .join(Delivery.endpoint)
+                .join(Delivery.event)
+                .where(Delivery.id == claimed.id)
+            )
+        ).one()
+        if enabled:
+            await session.commit()
+            lease = Lease(claimed.id, token, claimed.attempts_used, claimed.attempt_budget)
+            return ClaimedDelivery(lease, now, url, secret, body)
+        await _fail_endpoint_disabled(session, claimed.id, now)
 
 
 async def record_attempt(
@@ -172,6 +256,11 @@ async def record_attempt(
     if number is None:
         await session.rollback()
         return None
+    # Under the write lock now, so a disable can't land between this check and the commit.
+    status = settlement.status
+    if status is DeliveryStatus.PENDING and not await _endpoint_enabled(session, lease.delivery_id):
+        await _fail_endpoint_disabled(session, lease.delivery_id, result.finished_at)
+        status = DeliveryStatus.FAILED
 
     session.add(
         Attempt(
@@ -188,7 +277,7 @@ async def record_attempt(
         )
     )
     await session.commit()
-    return settlement.status
+    return status
 
 
 async def reclaim_expired(
@@ -218,6 +307,25 @@ async def reclaim_expired(
         if await record_attempt(session, lease, result, policy) is not None:
             reclaimed += 1
     return reclaimed
+
+
+async def _endpoint_enabled(session: AsyncSession, delivery_id: str) -> bool:
+    query = select(Endpoint.enabled).join(Delivery).where(Delivery.id == delivery_id)
+    return bool(await session.scalar(query))
+
+
+async def _fail_endpoint_disabled(session: AsyncSession, delivery_id: str, now: datetime) -> None:
+    await session.execute(
+        update(Delivery)
+        .where(Delivery.id == delivery_id)
+        .values(
+            status=DeliveryStatus.FAILED,
+            failure_reason=FailureReason.ENDPOINT_DISABLED,
+            lease_token=None,
+            lease_expires_at=None,
+            updated_at=now,
+        )
+    )
 
 
 def interrupted(*, started_at: datetime, now: datetime, why: str) -> AttemptResult:

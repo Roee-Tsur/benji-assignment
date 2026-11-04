@@ -5,9 +5,9 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from webhooks.domain import signing
-from webhooks.domain.enums import EventType
+from webhooks.domain.enums import DeliveryStatus, EventType, FailureReason
 from webhooks.ids import new_id
-from webhooks.models import Endpoint
+from webhooks.models import Delivery, Endpoint
 from webhooks.services.errors import NotFoundError
 
 
@@ -32,8 +32,13 @@ async def list_endpoints(session: AsyncSession) -> Sequence[Endpoint]:
     return (await session.scalars(query)).all()
 
 
-async def set_enabled(session: AsyncSession, endpoint_id: str, *, enabled: bool) -> Endpoint:
-    """Only flips the flag. What disabling does to pending deliveries is ADR 0003 (#5)."""
+async def set_enabled(
+    session: AsyncSession, endpoint_id: str, *, enabled: bool, now: datetime
+) -> Endpoint:
+    """Disabling also fails the endpoint's pending deliveries, in the same transaction (ADR 0003).
+
+    Attempts already in progress finish. Enabling again delivers nothing: that is replay's job.
+    """
     endpoint = await session.scalar(
         update(Endpoint)
         .where(Endpoint.id == endpoint_id)
@@ -43,5 +48,15 @@ async def set_enabled(session: AsyncSession, endpoint_id: str, *, enabled: bool)
     if endpoint is None:
         await session.rollback()
         raise NotFoundError("endpoint", endpoint_id)
+    if not enabled:
+        await session.execute(
+            update(Delivery)
+            .where(Delivery.endpoint_id == endpoint_id, Delivery.status == DeliveryStatus.PENDING)
+            .values(
+                status=DeliveryStatus.FAILED,
+                failure_reason=FailureReason.ENDPOINT_DISABLED,
+                updated_at=now,
+            )
+        )
     await session.commit()
     return endpoint

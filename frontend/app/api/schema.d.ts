@@ -32,8 +32,31 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update Endpoint */
+        /**
+         * Update Endpoint
+         * @description Disabling fails the endpoint's pending deliveries; enabling again delivers nothing.
+         */
         patch: operations["update_endpoint"];
+        trace?: never;
+    };
+    "/endpoints/{endpoint_id}/replay-failed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay Failed
+         * @description Replays every failed delivery of the endpoint, e.g. after an outage. 409 if it's disabled.
+         */
+        post: operations["replay_failed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/events": {
@@ -84,6 +107,28 @@ export interface paths {
         get: operations["get_delivery"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deliveries/{delivery_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay Delivery
+         * @description A failed delivery goes back to pending with a fresh attempt budget, keeping its history.
+         *
+         *     409 if it isn't failed, or its endpoint is disabled.
+         */
+        post: operations["replay_delivery"];
         delete?: never;
         options?: never;
         head?: never;
@@ -339,6 +384,14 @@ export interface components {
             /** Detail */
             detail?: string | null;
         };
+        /** ReplayedFailed */
+        ReplayedFailed: {
+            /**
+             * Replayed
+             * @description How many failed deliveries went back to pending.
+             */
+            replayed: number;
+        };
         /** ValidationIssue */
         ValidationIssue: {
             /** Loc */
@@ -470,11 +523,61 @@ export interface operations {
             };
         };
     };
+    replay_failed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpoint_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayedFailed"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+        };
+    };
     submit_event: {
         parameters: {
             query?: never;
-            header: {
-                "Idempotency-Key": string;
+            header?: {
+                /** @description Required. Resubmitting with the same key and payload is deduplicated. */
+                "Idempotency-Key"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -503,13 +606,31 @@ export interface operations {
                     "application/json": components["schemas"]["EventSubmitted"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Content Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid request, or the idempotency key was already used for a different payload (a plain problem, without `errors`). */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                    "application/problem+json": components["schemas"]["ValidationProblem"] | components["schemas"]["Problem"];
                 };
             };
         };
@@ -556,6 +677,55 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+        };
+    };
+    replay_delivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                delivery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

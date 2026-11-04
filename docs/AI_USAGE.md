@@ -61,3 +61,11 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Choices it made and flagged in the PR:** interrupted attempts (reclaimed or cut off by shutdown) go through the same settle rule as any retryable outcome, so the budget's "at most 6" holds even across restarts. The request timeout now bounds the whole request, because httpx's is per read.
 - **Review:** `/code-review` (xhigh) found 15 candidates. It fixed 3: a lease no longer than the request timeout is now rejected at startup, one failed release no longer stops shutdown releasing the rest, and the shutdown wait defaults to the request timeout instead of a copy of it. It documented the shutdown settle rule in the plan and skipped the minor ones, listed in the PR.
 - **Output:** a continuous worker pool with fenced write-back, lease reclaim, and graceful shutdown; 127 pytest tests.
+
+### 6. Ticket #5: replay + disable (2026-11-04)
+
+- **Asked:** run `/work-ticket 5` in its own worktree, stacked on the unmerged #4 branch (→ #3 → #1), and open the PR against `main` saying it merges after the stack.
+- **Process:** test-first. Shared worker test helpers moved into `conftest.py` first. Then failing tests for disable, the claim-time re-check, replay and its 409s, replay-failed, the mock modes, and the `flaky?n=6` → failed → replay → succeeded flow, before the code.
+- **Choices it made and flagged in the PR:** a pending delivery the claim finds on a disabled endpoint is failed, not skipped, so it can't sit `pending` forever. An in-flight attempt that would retry on a just-disabled endpoint fails with `endpoint_disabled` (the ADR's "dashboard misreports" reason applies). `flaky` counts requests per `webhook-id` on the receiver side, in memory, rather than reading the sender's attempt count.
+- **Review:** `/code-review` (high) found 4 candidates. It fixed 1: the mock receiver held a pooled DB connection while `slow` slept. It skipped the minor ones, listed in the PR.
+- **Output:** `POST /deliveries/{id}/replay`, `POST /endpoints/{id}/replay-failed`, disable per ADR 0003, `/mock/fail|flaky|slow`; 148 pytest tests.

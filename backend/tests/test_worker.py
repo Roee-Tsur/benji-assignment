@@ -1,6 +1,5 @@
 import asyncio
 import json
-from collections.abc import Callable, Coroutine
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -10,7 +9,19 @@ from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy import select, update
 
-from tests.conftest import FakeClock, create_endpoint, eventually, list_deliveries, submit_event
+from tests.conftest import (
+    PAST_ANY_BACKOFF,
+    RECEIVER,
+    FakeClock,
+    Handler,
+    create_endpoint,
+    eventually,
+    list_deliveries,
+    only_delivery,
+    responses,
+    submit_event,
+    worker_with_transport,
+)
 from webhooks.domain import signing
 from webhooks.main import create_app
 from webhooks.models import Delivery, Endpoint
@@ -18,36 +29,6 @@ from webhooks.runtime import runtime_of
 from webhooks.services import deliveries as deliveries_service
 from webhooks.settings import Settings
 from webhooks.worker import DeliveryWorker
-
-Handler = Callable[[httpx.Request], Coroutine[Any, Any, httpx.Response]]
-
-RECEIVER = "https://receiver.example/hook"
-# Past any backoff the default policy can pick (its cap is 300s), so a retry is due.
-PAST_ANY_BACKOFF = 301
-
-
-def worker_with_transport(app: FastAPI, handler: Handler, **settings: Any) -> DeliveryWorker:
-    """`settings` overrides the app's, e.g. `worker_concurrency=1`."""
-    runtime = runtime_of(app)
-    http = AsyncClient(transport=httpx.MockTransport(handler))
-    return DeliveryWorker(
-        runtime.sessions, http, runtime.clock, runtime.settings.model_copy(update=settings)
-    )
-
-
-def responses(*statuses: int) -> Handler:
-    """A receiver that answers with these statuses in turn."""
-    remaining = list(statuses)
-
-    async def receiver(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(remaining.pop(0))
-
-    return receiver
-
-
-async def only_delivery(client: AsyncClient) -> dict[str, Any]:
-    [delivery] = await list_deliveries(client)
-    return (await client.get(f"/deliveries/{delivery['id']}")).json()
 
 
 async def lease_token(app: FastAPI, delivery_id: str) -> str | None:

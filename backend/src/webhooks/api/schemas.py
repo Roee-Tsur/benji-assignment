@@ -37,6 +37,10 @@ class EndpointCreated(EndpointOut):
     secret: str = Field(description="The signing secret. Returned only here, once.")
 
 
+class ReplayedFailed(BaseModel):
+    replayed: int = Field(description="How many failed deliveries went back to pending.")
+
+
 class EventCreate(BaseModel):
     type: EventType
     data: dict[str, Any]

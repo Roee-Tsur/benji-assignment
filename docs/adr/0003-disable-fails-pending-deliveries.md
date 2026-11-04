@@ -10,4 +10,5 @@ Disabling an endpoint and marking its `pending` deliveries `failed` (reason `end
 ## Consequences
 
 - "Replay failed for this endpoint" is required, not optional. Without it, recovering from an outage means one click per delivery.
+- An in-flight attempt that would retry fails with `endpoint_disabled` rather than returning to `pending`, for the same reason the claim-time-only option was rejected.
 - Pause is listed under "with more time" as a separate concept from disable, not a variant of it.

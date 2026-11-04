@@ -30,7 +30,7 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
 - **Mock receiver** (`/mock/*`, enabled by `MOCK_RECEIVER_ENABLED`, on by default locally): verifies each request's signature (looking up the secret via `webhook-id`) and answers by mode:
   - `ok` → 200
   - `fail` → 500
-  - `flaky?n=` → fails the first *n* attempts of each delivery, then 200
+  - `flaky?n=` → fails the first *n* requests it sees per `webhook-id` (counted in memory, per app), then 200
   - `slow?s=` → sleeps, then 200; the only way to see `in progress` with your own eyes
 
   Playwright uses the same receiver, so there is no separate test receiver.
@@ -46,7 +46,7 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
 2. **Claim**: a continuous worker pool keeps up to 10 attempts in flight (`WORKER_CONCURRENCY`) and claims more as soon as a slot frees, so it never waits on a batch. A claim is a single `UPDATE … RETURNING` that:
    - picks due `pending` rows;
    - sets `in progress`, a fresh `lease_token`, and a 30s lease expiry.
-3. **Attempt**: just before sending, the worker re-checks the endpoint is enabled. It signs with a fresh `webhook-timestamp`, so replays aren't rejected by receivers' 5-minute tolerance, then POSTs with a 10s timeout that bounds the whole request, not just each read. No DB transaction is held open during the HTTP call. The response body is stored truncated to 2KB. Each Attempt records:
+3. **Attempt**: the claim re-checks the endpoint under its write lock; a delivery whose endpoint is disabled is failed (`endpoint_disabled`) instead of sent, and the claim moves on to the next. The worker signs with a fresh `webhook-timestamp`, so replays aren't rejected by receivers' 5-minute tolerance, then POSTs with a 10s timeout that bounds the whole request, not just each read. No DB transaction is held open during the HTTP call. The response body is stored truncated to 2KB. Each Attempt records:
    - timing;
    - the request headers sent;
    - the truncated response body;
@@ -57,11 +57,11 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
    - 410 → `failed`, reason `endpoint_gone`; no retry.
    - Anything else (including 3xx, since redirects aren't followed), timeouts, and connection errors → retry, or `failed` with reason `attempts_exhausted` once the attempt budget is spent.
 6. **Lease reclaim**: an expired lease is recorded as an `interrupted` attempt, which counts against the budget so a poison delivery can't loop forever. An interrupted attempt is settled like any other retryable outcome: the delivery returns to `pending` after backoff, or fails with `attempts_exhausted` if that was the last attempt of its budget. The lease must outlast a request (checked at startup), or slow attempts would be reclaimed while still in flight.
-7. **Replay** (`POST /deliveries/{id}/replay`): a `failed` delivery returns to `pending` with a fresh attempt budget. Attempt numbers keep counting up and it keeps the same `webhook-id`. Replaying anything not `failed`, or a delivery whose endpoint is disabled, returns 409. `POST /endpoints/{id}/replay-failed` replays every failed delivery of an endpoint in one conditional `UPDATE`, for recovery after an outage.
+7. **Replay** (`POST /deliveries/{id}/replay`): a `failed` delivery returns to `pending` with a fresh attempt budget. Attempt numbers keep counting up and it keeps the same `webhook-id`. Replaying anything not `failed`, or a delivery whose endpoint is disabled, returns 409; the replay returns the delivery's detail. `POST /endpoints/{id}/replay-failed` replays every failed delivery of an endpoint in one conditional `UPDATE`, for recovery after an outage, and returns `{replayed: n}` (409 if the endpoint is disabled). Both decide in the `UPDATE` itself (`failed` and endpoint enabled), and the fresh budget is the current `WEBHOOK_RETRY_MAX_ATTEMPTS`.
 
 **Retry policy:** 6 attempts per budget, exponential backoff with full jitter (base 2s, cap 5min). `Retry-After` is honored in its delta-seconds form and clamped to the cap. Settings: `WEBHOOK_RETRY_MAX_ATTEMPTS`, `WEBHOOK_RETRY_BASE_SECONDS`, `WEBHOOK_RETRY_CAP_SECONDS`, validated at startup. The pure `domain/retry_policy` module holds all three: `backoff`, `retry_delay` (`Retry-After` or backoff), and `classify` (2xx → success, 410 → endpoint gone, anything else or no response → retryable). The README shows the values that make retries visible in seconds; tests override them.
 
-**Disabled endpoints** ([ADR 0003](./adr/0003-disable-fails-pending-deliveries.md)): disabling an endpoint and failing its `pending` deliveries (reason `endpoint_disabled`) happen in one transaction. Attempts already `in progress` finish. Fan-out skips disabled endpoints, and the claim-time check covers races. Re-enabling flushes nothing; the operator uses replay-failed.
+**Disabled endpoints** ([ADR 0003](./adr/0003-disable-fails-pending-deliveries.md)): disabling an endpoint and failing its `pending` deliveries (reason `endpoint_disabled`) happen in one transaction. Attempts already `in progress` finish; if one would retry, it fails with `endpoint_disabled` instead of going back to `pending` (checked under the write-back's lock). Fan-out skips disabled endpoints, and the claim-time check covers races. Re-enabling flushes nothing; the operator uses replay-failed.
 
 **SQLite specifics:** WAL mode, `busy_timeout` set, and an index on `(status, next_attempt_at)`.
 
@@ -154,7 +154,7 @@ Planned now; file and test links get filled in during the final docs-vs-code pas
 | Configurable subscriptions | Endpoint with a set of event types; fan-out by type | pytest: fan-out; e2e 1 |
 | Reliable delivery | DB queue, backoff with jitter, leases | pytest: retry policy ([test_retry_policy.py](../backend/tests/test_retry_policy.py)); retry to success and exhaustion, 410, `Retry-After`, fencing, lease reclaim, the pool, shutdown ([test_worker.py](../backend/tests/test_worker.py)) |
 | Authenticated delivery | Standard Webhooks HMAC | pytest: signing + `standardwebhooks` interop ([test_signing.py](../backend/tests/test_signing.py)); mock receiver verification ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)) |
-| Replay-able failures | Failure reason + Replay / replay-failed | pytest: replay; e2e 3 |
+| Replay-able failures | Failure reason + Replay / replay-failed | pytest: replay, replay-failed, 409s, flaky → failed → replay → succeeded ([test_replay.py](../backend/tests/test_replay.py)); disable and the claim re-check ([test_disable.py](../backend/tests/test_disable.py)); mock modes ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)); e2e 3 |
 | Unique delivery | Idempotency-Key, unique (event, endpoint), stable `webhook-id` | pytest: idempotency, constraint (resubmit, 422 mismatch, concurrent resubmit, and unique constraint: [test_events_api.py](../backend/tests/test_events_api.py), [test_app.py](../backend/tests/test_app.py)); e2e 2 |
 | Observable delivery | Deliveries view, attempt log | e2e 2, 3 |
 | Endpoint management, secret once | Endpoints view | e2e 1 |
