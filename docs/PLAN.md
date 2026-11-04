@@ -36,6 +36,9 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
   Playwright uses the same receiver, so there is no separate test receiver.
 - **Thin routers**: Pydantic API schemas kept separate from ORM models. Errors are RFC 9457 `application/problem+json`.
 - Schema is created with `create_all` on startup.
+- IDs are prefixed (`ep_`, `evt_`, `dlv_`, `att_`). The delivery ID is the `webhook-id`.
+- A delivery counts attempts two ways: `attempt_count` over its whole life (it numbers attempts, so numbering continues across replays) and `attempts_used` / `attempt_budget` within the current budget (what the UI shows as "attempt 3/6", and what a replay resets).
+- SQLite transactions start at the first write, so reads before it aren't isolated. Anything that must be atomic is a single conditional statement or a unique constraint, never a read followed by a write.
 
 ### Delivery lifecycle
 
@@ -147,9 +150,9 @@ Planned now; file and test links get filled in during the final docs-vs-code pas
 |---|---|---|
 | Configurable subscriptions | Endpoint with a set of event types; fan-out by type | pytest: fan-out; e2e 1 |
 | Reliable delivery | DB queue, backoff with jitter, leases | pytest: retry, lease reclaim, shutdown |
-| Authenticated delivery | Standard Webhooks HMAC | pytest: signing + `standardwebhooks` interop |
+| Authenticated delivery | Standard Webhooks HMAC | pytest: signing + `standardwebhooks` interop ([test_signing.py](../backend/tests/test_signing.py)); mock receiver verification ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)) |
 | Replay-able failures | Failure reason + Replay / replay-failed | pytest: replay; e2e 3 |
-| Unique delivery | Idempotency-Key, unique (event, endpoint), stable `webhook-id` | pytest: idempotency, constraint; e2e 2 |
+| Unique delivery | Idempotency-Key, unique (event, endpoint), stable `webhook-id` | pytest: idempotency, constraint (resubmit and unique constraint: [test_events_api.py](../backend/tests/test_events_api.py), [test_app.py](../backend/tests/test_app.py)); e2e 2 |
 | Observable delivery | Deliveries view, attempt log | e2e 2, 3 |
 | Endpoint management, secret once | Endpoints view | e2e 1 |
 | Event trigger, dedup surfaced | Trigger form | e2e 2 |
