@@ -1,11 +1,14 @@
 from httpx import AsyncClient
 
-from tests.conftest import create_endpoint, list_deliveries, submit_event
+from tests.conftest import FakeClock, create_endpoint, list_deliveries, submit_event
 
 
-async def test_lists_newest_first_with_event_and_endpoint_context(client: AsyncClient) -> None:
+async def test_lists_newest_first_with_event_and_endpoint_context(
+    client: AsyncClient, clock: FakeClock
+) -> None:
     endpoint = await create_endpoint(client, event_types=["campaign_updated"])
     first = await submit_event(client, key="a", event_type="campaign_updated")
+    clock.advance(1)
     second = await submit_event(client, key="b", event_type="campaign_updated")
 
     deliveries = await list_deliveries(client)

@@ -1,4 +1,6 @@
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,24 @@ from webhooks.worker import DeliveryWorker
 MOCK_OK = "http://test/mock/ok"
 
 
+class FakeClock:
+    """Stands still until a test moves it, so due times and leases are under the test's control."""
+
+    def __init__(self, start: datetime = datetime(2026, 1, 1, tzinfo=UTC)) -> None:
+        self._now = start
+
+    def now(self) -> datetime:
+        return self._now
+
+    def advance(self, seconds: float) -> None:
+        self._now += timedelta(seconds=seconds)
+
+
+@pytest.fixture
+def clock() -> FakeClock:
+    return FakeClock()
+
+
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     return Settings(
@@ -25,8 +45,8 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-async def app(settings: Settings) -> AsyncIterator[FastAPI]:
-    app = create_app(settings)
+async def app(settings: Settings, clock: FakeClock) -> AsyncIterator[FastAPI]:
+    app = create_app(settings, clock)
     async with app.router.lifespan_context(app):
         yield app
 
@@ -76,3 +96,10 @@ async def list_deliveries(client: AsyncClient) -> list[dict[str, Any]]:
     response = await client.get("/deliveries")
     assert response.status_code == 200, response.text
     return response.json()
+
+
+async def eventually(predicate: Callable[[], bool], timeout: float = 2.0) -> None:
+    """Waits (in real time) until `predicate` holds, for tests that run the worker loop."""
+    async with asyncio.timeout(timeout):
+        while not predicate():
+            await asyncio.sleep(0.005)

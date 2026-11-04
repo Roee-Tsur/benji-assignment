@@ -3,7 +3,7 @@ from pathlib import Path
 
 from httpx import ASGITransport, AsyncClient
 
-from tests.conftest import create_endpoint, list_deliveries, submit_event
+from tests.conftest import FakeClock, create_endpoint, list_deliveries, submit_event
 from webhooks.domain import signing
 from webhooks.main import create_app
 from webhooks.settings import Settings
@@ -18,9 +18,9 @@ async def _delivery_and_secret(client: AsyncClient) -> tuple[str, str]:
     return delivery["id"], endpoint["secret"]
 
 
-async def test_accepts_a_valid_signature(client: AsyncClient) -> None:
+async def test_accepts_a_valid_signature(client: AsyncClient, clock: FakeClock) -> None:
     delivery_id, secret = await _delivery_and_secret(client)
-    headers = signing.signature_headers(secret, delivery_id, datetime.now(UTC), BODY)
+    headers = signing.signature_headers(secret, delivery_id, clock.now(), BODY)
 
     response = await client.post("/mock/ok", content=BODY, headers=headers)
 
