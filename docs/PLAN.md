@@ -16,6 +16,7 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
 | Signing | Standard Webhooks, HMAC-SHA256, per-endpoint `whsec_` secret: [ADR 0002](./adr/0002-standard-webhooks-signing.md) |
 | Disabled endpoints | Fail pending deliveries, recover by replay: [ADR 0003](./adr/0003-disable-fails-pending-deliveries.md) |
 | Frontend | Nuxt 4 (SPA mode) + Vue 3 + TypeScript, Nuxt UI v4, TanStack Vue Query, `pnpm` |
+| Frontend state | Server state in Vue Query only, no Pinia: [ADR 0004](./adr/0004-server-state-in-vue-query.md) |
 | Live updates | Polling (~1.5s while anything is non-terminal, backing off when idle) |
 | Demo/test receiver | Built-in mock receiver mounted in the API behind a setting |
 | Tests | pytest (backend behavior), Vitest (state layer), Playwright (3 e2e flows) |
@@ -41,9 +42,8 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
 1. **Submit**: `POST /events` with a required `Idempotency-Key`. In one transaction it stores the Event and creates one Delivery (`pending`) per *enabled* endpoint subscribed to the type. This is a transactional outbox: endpoints are snapshotted at submit time. The envelope is serialized once and the bytes are stored; every attempt sends exactly those bytes.
 2. **Claim**: a continuous worker pool keeps up to 10 attempts in flight and claims more as soon as a slot frees, so it never waits on a batch. A claim is a single `UPDATE … RETURNING` that:
    - picks due `pending` rows;
-   - skips endpoints that already have 2 in flight, so one slow endpoint can't take every slot;
    - sets `in progress`, a fresh `lease_token`, and a 30s lease expiry.
-3. **Attempt**: just before sending, the worker re-checks the endpoint is enabled. It signs with a fresh `webhook-timestamp`, so replays aren't rejected by receivers' 5-minute tolerance, then POSTs with a 10s timeout. No DB transaction is held open during the HTTP call. The response is streamed and reading stops at 2KB. Each Attempt records:
+3. **Attempt**: just before sending, the worker re-checks the endpoint is enabled. It signs with a fresh `webhook-timestamp`, so replays aren't rejected by receivers' 5-minute tolerance, then POSTs with a 10s timeout. No DB transaction is held open during the HTTP call. The response body is stored truncated to 2KB. Each Attempt records:
    - timing;
    - the request headers sent;
    - the truncated response body;
@@ -56,7 +56,7 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
 6. **Lease reclaim**: an expired lease is recorded as an `interrupted` attempt, which counts against the budget so a poison delivery can't loop forever. The delivery returns to `pending`.
 7. **Replay** (`POST /deliveries/{id}/replay`): a `failed` delivery returns to `pending` with a fresh attempt budget. Attempt numbers keep counting up and it keeps the same `webhook-id`. Replaying anything not `failed`, or a delivery whose endpoint is disabled, returns 409. `POST /endpoints/{id}/replay-failed` replays every failed delivery of an endpoint in one conditional `UPDATE`, for recovery after an outage.
 
-**Retry policy:** 6 attempts per budget, exponential backoff with full jitter (base 2s, cap 5min). `Retry-After` is honored in both forms (delta-seconds and HTTP-date) and clamped to the cap. Settings: `WEBHOOK_RETRY_MAX_ATTEMPTS`, `WEBHOOK_RETRY_BASE_SECONDS`, `WEBHOOK_RETRY_CAP_SECONDS`. The README shows the values that make retries visible in seconds; tests override them.
+**Retry policy:** 6 attempts per budget, exponential backoff with full jitter (base 2s, cap 5min). `Retry-After` is honored in its delta-seconds form and clamped to the cap. Settings: `WEBHOOK_RETRY_MAX_ATTEMPTS`, `WEBHOOK_RETRY_BASE_SECONDS`, `WEBHOOK_RETRY_CAP_SECONDS`. The README shows the values that make retries visible in seconds; tests override them.
 
 **Disabled endpoints** ([ADR 0003](./adr/0003-disable-fails-pending-deliveries.md)): disabling an endpoint and failing its `pending` deliveries (reason `endpoint_disabled`) happen in one transaction. Attempts already `in progress` finish. Fan-out skips disabled endpoints, and the claim-time check covers races. Re-enabling flushes nothing; the operator uses replay-failed.
 
@@ -84,10 +84,19 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
 
 ### Frontend shape
 
-- **API layer**: a client typed from FastAPI's OpenAPI (`openapi-typescript` + `openapi-fetch`), plus a single `ApiError` normalizer.
-- **State layer**: feature composables over Vue Query (`useEndpoints`, `useTriggerEvent`, `useDeliveries`, …) that own loading, error, and in-flight state, polling, and invalidation.
+- **API layer**: a client typed from FastAPI's OpenAPI (`openapi-typescript` + `openapi-fetch`), plus a single `ApiError` normalizer. CI fails if the generated client is out of date with the backend schema, so type safety holds end to end.
+- **State layer** ([ADR 0004](./adr/0004-server-state-in-vue-query.md)):
+  - feature composables over Vue Query (`useEndpoints`, `useTriggerEvent`, `useDeliveries`, …) own loading, error, and in-flight state, polling, and invalidation;
+  - a query key factory makes invalidation targeted;
+  - filters and the open delivery live in the URL, not in a store.
 - **UI**: pages and components only render state and call composables.
 - **Errors**: mutation failures show a toast; query failures show an inline error with retry. The treatment is the same in every view.
+- **Optimistic replay**: the row flips to `pending` immediately and rolls back with a toast if the request fails.
+- **Accessibility**:
+  - status badges use color, an icon, and text, never color alone;
+  - rows expand from the keyboard and the slideover traps focus;
+  - Playwright runs an axe check on every view.
+- Desktop-first: an ops dashboard, with no mobile layout.
 
 ### Staying accurate over time
 
@@ -95,28 +104,40 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
 - An expanded row's detail query (payload and attempt log) polls on its own while its delivery is non-terminal.
 - The status count chips come from a separate aggregate query, so they're right regardless of paging.
 - Every view reads the DB, which is also the queue, so there's no second source of truth to drift.
+- Making "live" visible:
+  - rows briefly highlight when their status changes;
+  - a "live · updated 2s ago" indicator shows polling health and turns into an error state when polls fail;
+  - polling pauses while the browser tab is hidden and refetches when it becomes visible.
 
 ### Dashboard
 
 - **Endpoints**: list, create (signing secret shown once in a modal), enable/disable, and "replay failed" per endpoint.
-- **Events**: trigger form with a type picker and a JSON editor prefilled with a sample payload per type. The idempotency key persists until the input changes or the user clicks "new key", so resubmitting visibly dedupes. Below it, a recent-events list with fan-out counts that drills down to its deliveries.
-- **Deliveries**: live table filtered by status and endpoint, with status count chips and the newest 50 plus keyset "load more". Pending rows show "attempt 3/6 · next in 12s" (from `next_attempt_at`) and failed rows show their failure reason. An expandable row shows the payload, the attempt log, and Replay.
+- **Events**: trigger form with a type picker and a JSON editor prefilled with a sample payload per type. The editor validates JSON live and has a "format" button. The idempotency key persists until the input changes or the user clicks "new key", so resubmitting visibly dedupes. Below it, a recent-events list with fan-out counts that drills down to its deliveries.
+- **Deliveries**: live table filtered by status and endpoint, with the filters held in the URL (`?status=failed&endpoint=…`) so views can be deep-linked and the back button works. It has status count chips and the newest 50 plus keyset "load more". Pending rows show "attempt 3/6 · next in 12s" (from `next_attempt_at`) and failed rows show their failure reason. Opening a delivery shows a slideover with its own URL, containing the payload, the attempt log, and Replay.
 
 ### Tests
 
 - **pytest**:
-  - backoff and jitter bounds, outcome classification (3xx, 410), `Retry-After` in both forms with clamping;
+  - backoff and jitter bounds, outcome classification (3xx, 410), `Retry-After` with clamping;
   - retry-to-success and retry-to-exhaustion (fake clock + httpx `MockTransport`);
   - required key, idempotent resubmit, 422 on mismatch, concurrent resubmit, unique constraint;
   - replay: fresh budget, numbering continues, same `webhook-id`, 409 cases, replay-failed;
   - signing: round-trip, tampering, stale timestamp, re-sign per attempt, and **interop with `standardwebhooks`**;
   - lease: reclaim as `interrupted`, and a stale `lease_token` write being discarded;
-  - per-endpoint in-flight cap, disable failing pending deliveries, graceful-shutdown lease release.
-- **Vitest**: `ApiError` normalization and the polling composable.
+  - disable failing pending deliveries, graceful-shutdown lease release.
+- **Vitest** (`@nuxt/test-utils` + MSW handlers typed from the OpenAPI schema):
+  - `ApiError` normalization;
+  - polling stops once every delivery is terminal and resumes when one isn't;
+  - every loaded page refreshes;
+  - optimistic replay rolls back on error;
+  - the trigger form shows the dedup notice and the 422 mismatch;
+  - URL ↔ filter sync.
 - **Playwright**, against the built-in mock receiver:
   1. create an endpoint and see the secret once;
   2. trigger, watch it reach `succeeded` live, resubmit and see the dedup notice;
   3. `flaky?n=<max attempts>` → `failed` → Replay → `succeeded`.
+
+  Each view also gets an axe accessibility check.
 
 ### Requirement traceability
 
@@ -133,22 +154,25 @@ Planned now; file and test links get filled in during the final docs-vs-code pas
 | Endpoint management, secret once | Endpoints view | e2e 1 |
 | Event trigger, dedup surfaced | Trigger form | e2e 2 |
 | Live delivery view | Polling all loaded pages + detail | e2e 2, 3; Vitest polling |
-| Attempt inspection, replay | Expandable row | e2e 3 |
-| Async UX, consistent errors | Vue Query composables, `ApiError` | Vitest `ApiError` |
+| Attempt inspection, replay | Delivery slideover, optimistic replay | e2e 3; Vitest rollback |
+| Async UX, consistent errors | Vue Query composables, `ApiError` | Vitest `ApiError`, trigger form |
 | API / state / UI separation | `api/`, `composables/`, components | Code layout |
 
 ## Build order and cut line
 
-The work is tracked as GitHub issues #1–#10, one session and PR each, run with the `work-ticket` skill. Each ticket states its dependencies and a suggested effort level.
+The work is tracked as GitHub issues #1–#11, one session and PR each, run with the `work-ticket` skill. Each ticket states its dependencies and a suggested effort level.
+
+The role is frontend-leaning, so the dashboard gets the extra depth, and the backend is held to what keeps the dashboard truthful.
 
 1. **Thin vertical slice:** create endpoint → trigger → worker → mock receiver → `succeeded` visible in a minimal dashboard.
 2. **Deepen the backend:** retries, leases and fencing, replay, disable, shutdown, plus the pytest suite.
 3. **Deepen the dashboard:** deliveries table, filters, attempt log, retry countdown, async UX.
-4. Playwright e2e.
-5. CI.
-6. **Final pass:** traceability links, a docs-vs-code check, a separate AI review session against `ASSIGNMENT.md`, and README.
+4. **UI polish pass** (#11): a fresh session uses the app in the browser and tightens visual hierarchy, consistency, empty states, and microcopy.
+5. Playwright e2e.
+6. CI.
+7. **Final pass:** traceability links, a docs-vs-code check, a separate AI review session against `ASSIGNMENT.md`, and a README with a GIF of the live view and screenshots.
 
-If time runs short, cut in this order: CI, then the Events list (keeping the trigger form), then the count chips. The backend tests and the dashboard requirements are never cut.
+If time runs short, cut in this order: CI, then the Events list (keeping the trigger form), then the count chips. The backend tests, the dashboard requirements, and the polish pass are never cut.
 
 ## Deliberately cut
 
@@ -158,11 +182,14 @@ If time runs short, cut in this order: CI, then the Events list (keeping the tri
 - **Pause/hold semantics** for endpoints ([ADR 0003](./adr/0003-disable-fails-pending-deliveries.md)), and time-ranged recovery ("replay since T").
 - **Alembic migrations**, data retention/cleanup.
 - **SSRF protection**: URLs are validated as `http(s)` only, and loopback is needed for local testing.
-- **Charts and search** in the dashboard.
+- **Charts and search** in the dashboard. A mobile layout, Storybook, visual regression tests.
+- **Backend refinements traded for frontend depth**: a per-endpoint in-flight cap, `Retry-After` HTTP-date parsing, and streaming response capture.
 
 ## With more time
 
 - Postgres + `SKIP LOCKED` and separate worker processes (ADR 0001's scale-out path).
+- A per-endpoint in-flight cap, so one slow endpoint can't take every worker slot.
+- `Retry-After` in HTTP-date form, and streaming response capture that stops reading at 2KB.
 - Delta polling (`updated_after` cursor merged into the cache by id), or SSE as an invalidation hint, instead of refetching loaded pages.
 - Endpoint pause/resume with a controlled drain, and "replay since T".
 - Secret rotation with dual signatures (supported by the Standard Webhooks header format).
