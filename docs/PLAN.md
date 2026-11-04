@@ -118,7 +118,7 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
 ### Dashboard
 
 - **Endpoints**: list, create (signing secret shown once in a modal), enable/disable, and "replay failed" per endpoint.
-- **Events**: trigger form with a type picker and a JSON editor prefilled with a sample payload per type. The editor validates JSON live and has a "format" button. The idempotency key persists until the input changes or the user clicks "new key", so resubmitting visibly dedupes. Below it, a recent-events list with fan-out counts that drills down to its deliveries.
+- **Events**: trigger form with a type picker and a JSON editor prefilled with a sample payload per type. The editor validates JSON live and has a "format" button. The idempotency key persists until the input changes or the user clicks "new key", so resubmitting visibly dedupes. "The input" means the type and the parsed data, so reformatting keeps the key. The key is editable, which is how a reused key's 422 is reached and shown inline. Below it, the newest 20 events (`GET /events`) with fan-out counts, each linking to `/deliveries?event=<id>`.
 - **Deliveries**: live table filtered by status and endpoint, with the filters held in the URL (`?status=failed&endpoint=…`) so views can be deep-linked and the back button works. It has status count chips and the newest 50 plus keyset "load more". Pending rows show "attempt 3/6 · next in 12s" (from `next_attempt_at`) and failed rows show their failure reason. Opening a delivery shows a slideover with its own URL, containing the payload, the attempt log, and Replay.
 
 ### Tests
@@ -157,8 +157,8 @@ Planned now; file and test links get filled in during the final docs-vs-code pas
 | Replay-able failures | Failure reason + Replay / replay-failed | pytest: replay, replay-failed, 409s, flaky → failed → replay → succeeded ([test_replay.py](../backend/tests/test_replay.py)); disable and the claim re-check ([test_disable.py](../backend/tests/test_disable.py)); mock modes ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)); e2e 3 |
 | Unique delivery | Idempotency-Key, unique (event, endpoint), stable `webhook-id` | pytest: idempotency, constraint (resubmit, 422 mismatch, concurrent resubmit, and unique constraint: [test_events_api.py](../backend/tests/test_events_api.py), [test_app.py](../backend/tests/test_app.py)); e2e 2 |
 | Observable delivery | Deliveries view, attempt log | e2e 2, 3 |
-| Endpoint management, secret once | Endpoints view | e2e 1 |
-| Event trigger, dedup surfaced | Trigger form | e2e 2 |
+| Endpoint management, secret once | Endpoints view | Vitest: secret gone from the page and every cache after the modal closes, inline URL validation ([createEndpointModal.test.ts](../frontend/test/nuxt/createEndpointModal.test.ts)); disable refetches deliveries, per-row in-flight state, replay-failed ([endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)); e2e 1 |
+| Event trigger, dedup surfaced | Trigger form, `GET /events` | Vitest: key lifecycle, dedup notice, 422 mismatch inline, invalid JSON blocked ([triggerEventForm.test.ts](../frontend/test/nuxt/triggerEventForm.test.ts), [useIdempotencyKey.test.ts](../frontend/test/nuxt/useIdempotencyKey.test.ts), [eventData.test.ts](../frontend/test/unit/eventData.test.ts)); pytest: recent events with fan-out counts ([test_events_api.py](../backend/tests/test_events_api.py)); e2e 2 |
 | Live delivery view | Polling all loaded pages + detail | e2e 2, 3; Vitest polling |
 | Attempt inspection, replay | Delivery slideover, optimistic replay | e2e 3; Vitest rollback |
 | Async UX, consistent errors | Vue Query composables, `ApiError` | Vitest `ApiError` ([api-errors.test.ts](../frontend/test/unit/api-errors.test.ts), [endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)), trigger form |
