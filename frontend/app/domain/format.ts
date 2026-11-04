@@ -27,6 +27,7 @@ const units: [seconds: number, suffix: string][] = [[86_400, 'd'], [3600, 'h'], 
  */
 export function formatRelativeTime(iso: string, now: number): string {
   const seconds = Math.floor((now - Date.parse(iso)) / 1000)
+  if (Number.isNaN(seconds)) return '—'
   if (seconds < 5) return 'just now'
   if (seconds >= 7 * 86_400) return dateFormat.format(new Date(iso))
   const [size, suffix] = units.find(([size]) => seconds >= size)!

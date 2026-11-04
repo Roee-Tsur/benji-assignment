@@ -97,7 +97,6 @@ const columns: TableColumn<Delivery>[] = [
       <QueryError
         v-if="loadError"
         :error="loadError"
-        :retrying="deliveries.isFetching.value"
         @retry="deliveries.refetch()"
       />
       <template v-else>
@@ -106,13 +105,14 @@ const columns: TableColumn<Delivery>[] = [
           :data="deliveries.deliveries.value"
           :columns="columns"
           :get-row-id="(row: Delivery) => row.id"
-          :loading="deliveries.isPending.value || deliveries.isPlaceholderData.value"
+          :loading="deliveries.isPlaceholderData.value"
           :meta="{ class: { tr: row => highlighted.has(row.original.id) ? 'bg-primary/10' : '' } }"
           :ui="{ tr: 'transition-colors duration-1000' }"
           @select="(_event, row) => openDeliveryId = row.original.id"
         >
           <template #empty>
-            <TableSkeleton v-if="deliveries.isPending.value" />
+            <!-- Placeholder rows are the previous filter's; while they're empty, the new ones are still loading. -->
+            <TableSkeleton v-if="deliveries.isPending.value || deliveries.isPlaceholderData.value" />
             <UEmpty
               v-else-if="filtered"
               variant="naked"

@@ -25,6 +25,10 @@ describe('formatRelativeTime', () => {
     expect(formatRelativeTime(ago(-3), now)).toBe('just now')
   })
 
+  it('shows a dash for a timestamp it cannot read, rather than throwing mid-render', () => {
+    expect(formatRelativeTime('not a date', now)).toBe('—')
+  })
+
   it('falls back to the date once it is a week old', () => {
     expect(formatRelativeTime('2026-10-01T12:00:00Z', now)).toBe('Oct 1, 2026')
   })

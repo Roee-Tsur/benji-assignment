@@ -59,14 +59,12 @@ const columns: TableColumn<Endpoint>[] = [
       <QueryError
         v-if="loadError"
         :error="loadError"
-        :retrying="endpoints.isFetching.value"
         @retry="endpoints.refetch()"
       />
       <UTable
         v-else
         :data="endpoints.data.value ?? []"
         :columns="columns"
-        :loading="endpoints.isPending.value"
       >
         <template #empty>
           <TableSkeleton v-if="endpoints.isPending.value" />

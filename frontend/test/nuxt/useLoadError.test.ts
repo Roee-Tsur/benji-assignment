@@ -51,6 +51,21 @@ describe('useLoadError', () => {
     expect(loadError.value).toBeNull()
   })
 
+  it('drops the error when the query moves to another key, so the new key shows as loading', async () => {
+    server.use(http.get('/deliveries', ({ query }) => query.get('endpoint_id') === 'ep_a' ? unavailable() : new Promise(() => {})))
+    const filters = ref({ endpointId: 'ep_a' })
+    const { deliveries, loadError } = await withSetup(() => {
+      const deliveries = useDeliveries(filters)
+      return { deliveries, loadError: useLoadError(deliveries) }
+    })
+    await vi.advanceTimersByTimeAsync(4000)
+    await vi.waitFor(() => expect(loadError.value?.status).toBe(503))
+
+    filters.value = { endpointId: 'ep_b' }
+    await vi.waitFor(() => expect(deliveries.isPending.value).toBe(true))
+    expect(loadError.value).toBeNull()
+  })
+
   it('is null when a refetch fails after data has loaded: the data stays on screen', async () => {
     let up = true
     server.use(http.get('/events', ({ response }) => up ? response(200).json([]) : unavailable()))

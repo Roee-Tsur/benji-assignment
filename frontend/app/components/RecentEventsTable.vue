@@ -32,14 +32,12 @@ const columns: TableColumn<Event>[] = [
     <QueryError
       v-if="loadError"
       :error="loadError"
-      :retrying="events.isFetching.value"
       @retry="events.refetch()"
     />
     <UTable
       v-else
       :data="events.data.value ?? []"
       :columns="columns"
-      :loading="events.isPending.value"
     >
       <template #empty>
         <TableSkeleton v-if="events.isPending.value" />

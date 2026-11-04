@@ -20,6 +20,7 @@ const open = computed({
 
 // Polls only while open; the cached detail stays on screen through the close animation.
 const detail = useDelivery(shownId, open)
+const loadError = useLoadError(detail)
 const replay = useReplayDelivery()
 const replaying = computed(() => replay.isPending.value && replay.variables.value === shownId.value)
 const now = useClock()
@@ -29,7 +30,6 @@ const now = useClock()
   <!-- A dialog underneath: it traps focus, closes on Escape, and returns focus on close. -->
   <USlideover
     v-model:open="open"
-    :title="`Delivery ${shownId ?? ''}`"
     description="Payload and attempt log; updates live until the delivery is final."
     :ui="{ content: 'max-w-2xl', title: 'pe-8' }"
   >
@@ -40,8 +40,8 @@ const now = useClock()
 
     <template #body>
       <QueryError
-        v-if="detail.error.value && !detail.data.value"
-        :error="detail.error.value"
+        v-if="loadError"
+        :error="loadError"
         @retry="detail.refetch()"
       />
       <div
