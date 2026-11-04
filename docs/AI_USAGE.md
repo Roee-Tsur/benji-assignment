@@ -146,3 +146,13 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Where I steered:** I picked the fix from the issue's options: keep the key with the submission it belongs to in `sessionStorage` via VueUse, rather than reword the README, and kept the key rules unchanged.
 - **Process:** the new remount tests failed against the old composable and pass with `useSessionStorage`. In the app, on separate ports: trigger → Deliveries → Events → submit showed "Duplicate submission", a reload kept the key too, and changed data still got a new key. `/code-review` (low) found nothing.
 - **Output:** [useIdempotencyKey.ts](../frontend/app/composables/useIdempotencyKey.ts), with the remount tests and PLAN's Events bullet updated. README step 5 is true as written.
+
+### 16. Ticket #10: independent pre-submit review (2026-11-04)
+
+- **Asked:** run `/work-ticket 10` in a fresh session that did no build work: review the repo against the brief as a Benji reviewer would, run `/code-review` over the whole codebase, follow the README in a fresh clone, file each gap as an issue, and fix nothing.
+- **Where I steered:** the AI flagged that a fix-nothing ticket conflicts with the every-session AI usage entry. I chose a docs-only PR for this entry, and approved new `severity:*` labels.
+- **Process:**
+  - It read every source file, ran `/code-review` (xhigh), and probed suspected bugs directly: it compiled the claim SQL to rule out a correlation bug, and posted a `NaN` payload, which confirmed one.
+  - It ran the README demo in the browser from a throwaway clone on separate ports, leaving my running dev servers alone.
+  - The demo turned up the main finding: the idempotency key resets when you leave the Events page, so the README's dedup step creates a new event.
+- **Output:** a verdict with evidence for every requirement, posted on #10 (all met; AI usage note partial until transcripts land). 13 issues filed (#29–#41): 1 high, 4 medium, 8 low.
