@@ -33,7 +33,6 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Review:** `/code-review` found 9 issues. It fixed 7: request errors other than transport errors left a delivery stuck `in progress`, problem responses dropped the `Allow` header, and 5 smaller cleanups. It skipped 2 that belong to later tickets: shutdown mid-attempt (#4) and the concurrent same-key race (#3).
 - **Output:** `backend/` (47 pytest tests, ruff, strict pyright) and root `Makefile` targets.
 
-
 ### 3. Ticket #2: frontend walking skeleton (2026-11-04)
 
 - **Asked:** run `/work-ticket 2` from the ticket #1 session, stacked on the unmerged #1 branch (a GitHub incident delayed the merge): the Nuxt 4 SPA, a typed API layer, the Vue Query state layer, the app shell, minimal pages, and the Vitest + MSW harness.
@@ -45,3 +44,12 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Review:** `/code-review` found 8 issues, and it fixed all of them. The main ones: `mutateAsync` rejections went unhandled, a create that resolved after its modal closed could bring back the secret, one failed poll hid the loaded rows, and the generated schema depended on the local backend `.env`.
 - **Where I steered:** coming from frameworks with a separate view model, I asked whether component logic like `submit`, `validate`, and `copySecret` should move out of the view. The AI's answer was that Vue's equivalent is a composable, and one-view glue stays in the component. Only reused or pure, testable logic moves out. I had it apply that rule: VueUse `useClipboard` replaced the hand-written copy, and JSON parsing moved to `app/domain/` with tests. I also had the rule recorded in `CLAUDE.md` for later tickets.
 - **Output:** `frontend/` (23 Vitest tests in Node and Nuxt projects, ESLint, `vue-tsc` over app and tests), `make dev` plus frontend coverage in `make lint` / `typecheck` / `test`.
+
+
+### 4. Ticket #3: retry policy + idempotency hardening (2026-11-04)
+
+- **Asked:** run `/work-ticket 3` in its own worktree, stacked on the unmerged #1 branch while #2 ran in parallel in the main checkout, and keep away from the shared `Makefile`.
+- **Process:** test-first. The retry policy got table-driven tests (jitter bounds, cap, every classification, `Retry-After` clamping and ignored HTTP-dates). The concurrent-resubmit test was run against the old check-then-insert code first and reproduced the `UNIQUE constraint` 500 before the insert-and-catch fix.
+- **Choices it made and flagged in the PR:** the 64 KiB limit measures the serialized envelope (what receivers get), a missing key is a 400 by declaring the header optional and checking it in the router, and `RetryPolicy` owns the attempt budget's size.
+- **Review:** `/code-review` found 7 issues. It fixed 5: `True == 1 == 1.0` let different payloads dedupe, bad retry settings failed per request instead of at startup, blank keys were accepted, other integrity errors were masked, and an odd `Retry-After` sentinel. It recorded the request-size guard under "With more time" and the PLAN wording under docs.
+- **Output:** `domain/retry_policy.py`, hardened `POST /events`, 107 pytest tests.

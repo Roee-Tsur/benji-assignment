@@ -1,3 +1,7 @@
+import asyncio
+from typing import Any
+
+import pytest
 from httpx import AsyncClient
 
 from tests.conftest import create_endpoint, list_deliveries, submit_event
@@ -80,3 +84,87 @@ async def test_rejects_unknown_event_types(client: AsyncClient) -> None:
 
     assert response.status_code == 422
     assert response.headers["content-type"] == "application/problem+json"
+
+
+async def test_requires_an_idempotency_key(client: AsyncClient) -> None:
+    for headers in ({}, {"Idempotency-Key": ""}, {"Idempotency-Key": "  "}):
+        response = await client.post(
+            "/events", json={"type": "campaign_updated", "data": {}}, headers=headers
+        )
+
+        assert response.status_code == 400
+        assert response.headers["content-type"] == "application/problem+json"
+        assert "Idempotency-Key" in response.json()["detail"]
+
+
+async def test_same_key_same_payload_in_any_key_order_is_deduplicated(
+    client: AsyncClient,
+) -> None:
+    original = await submit_event(client, key="k", data={"a": 1, "b": {"c": [1, 2]}})
+
+    resubmitted = await submit_event(client, key="k", data={"b": {"c": [1, 2]}, "a": 1})
+
+    assert resubmitted["id"] == original["id"]
+    assert resubmitted["deduplicated"] is True
+
+
+@pytest.mark.parametrize(
+    "different",
+    [
+        {"type": "reward_transaction_created", "data": {"points": 11}},
+        {"type": "campaign_updated", "data": {"points": 10}},
+        {"type": "reward_transaction_created", "data": {"points": 10.0}},
+        {"type": "reward_transaction_created", "data": {"points": True}},
+    ],
+)
+async def test_same_key_different_payload_is_422(
+    client: AsyncClient, different: dict[str, Any]
+) -> None:
+    await create_endpoint(client)
+    await submit_event(client, key="k", data={"points": 10})
+
+    response = await client.post("/events", json=different, headers={"Idempotency-Key": "k"})
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["title"] == "Idempotency key reused"
+    assert len(await list_deliveries(client)) == 1
+
+
+async def test_concurrent_resubmits_create_exactly_one_event(client: AsyncClient) -> None:
+    await create_endpoint(client)
+
+    responses = await asyncio.gather(
+        *(
+            client.post(
+                "/events",
+                json={"type": "reward_transaction_created", "data": {"points": 10}},
+                headers={"Idempotency-Key": "race"},
+            )
+            for _ in range(10)
+        )
+    )
+
+    assert sorted(r.status_code for r in responses) == [200] * 9 + [201]
+    assert len({r.json()["id"] for r in responses}) == 1
+    assert len(await list_deliveries(client)) == 1
+
+
+async def test_rejects_payloads_over_64_kib(client: AsyncClient) -> None:
+    await create_endpoint(client)
+
+    response = await client.post(
+        "/events",
+        json={"type": "campaign_updated", "data": {"blob": "x" * 64 * 1024}},
+        headers={"Idempotency-Key": "big"},
+    )
+
+    assert response.status_code == 413
+    assert response.headers["content-type"] == "application/problem+json"
+    assert await list_deliveries(client) == []
+
+
+async def test_accepts_payloads_just_under_64_kib(client: AsyncClient) -> None:
+    event = await submit_event(client, key="fits", data={"blob": "x" * (64 * 1024 - 200)})
+
+    assert event["deduplicated"] is False

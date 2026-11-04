@@ -4,6 +4,9 @@ from typing import Any
 
 from webhooks.domain.enums import EventType
 
+# Limits the bytes each attempt sends, which is what a receiver has to accept.
+MAX_ENVELOPE_BYTES = 64 * 1024
+
 
 def serialize_envelope(
     event_id: str, event_type: EventType, timestamp: datetime, data: Any

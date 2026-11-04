@@ -1,4 +1,9 @@
+from typing import Self
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from webhooks.domain.retry_policy import RetryPolicy
 
 
 class Settings(BaseSettings):
@@ -16,3 +21,18 @@ class Settings(BaseSettings):
     webhook_request_timeout_seconds: float = 10.0
     webhook_lease_seconds: float = 30.0
     webhook_retry_max_attempts: int = 6
+    webhook_retry_base_seconds: float = 2.0
+    webhook_retry_cap_seconds: float = 300.0
+
+    @model_validator(mode="after")
+    def _check_retry_policy(self) -> Self:
+        self.retry_policy  # noqa: B018  # fail at startup, not on the first submit
+        return self
+
+    @property
+    def retry_policy(self) -> RetryPolicy:
+        return RetryPolicy(
+            max_attempts=self.webhook_retry_max_attempts,
+            base_seconds=self.webhook_retry_base_seconds,
+            cap_seconds=self.webhook_retry_cap_seconds,
+        )
