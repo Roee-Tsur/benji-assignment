@@ -51,7 +51,7 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
     app.include_router(events.router)
     app.include_router(deliveries.router)
     if settings.mock_receiver_enabled:
-        app.include_router(mock_receiver.router)
+        app.include_router(mock_receiver.create_router())
 
     default_openapi = app.openapi
 

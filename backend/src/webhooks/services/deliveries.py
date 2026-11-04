@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import ColumnElement, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -10,7 +10,7 @@ from webhooks.domain.enums import AttemptOutcome, DeliveryStatus, FailureReason
 from webhooks.domain.retry_policy import RetryPolicy, classify
 from webhooks.ids import new_id
 from webhooks.models import Attempt, Delivery, Endpoint, Event
-from webhooks.services.errors import NotFoundError
+from webhooks.services.errors import NotFoundError, NotReplayableError
 
 MAX_RESPONSE_BODY_BYTES = 2048
 
@@ -91,6 +91,86 @@ async def get_signing_secret(session: AsyncSession, delivery_id: str) -> str | N
     """The secret a receiver would look up from a request's `webhook-id`."""
     query = select(Endpoint.secret).join(Delivery).where(Delivery.id == delivery_id)
     return await session.scalar(query)
+
+
+async def replay(
+    session: AsyncSession, delivery_id: str, *, now: datetime, attempt_budget: int
+) -> None:
+    """Returns a failed delivery to pending with a fresh budget, in one conditional `UPDATE`.
+
+    Its `attempt_count` (and so the attempt numbering) and its id, the `webhook-id`, carry on.
+    """
+    replayed = await session.scalar(
+        update(Delivery)
+        .where(Delivery.id == delivery_id, *_replayable())
+        .values(_replayed(now, attempt_budget))
+        .returning(Delivery.id)
+    )
+    if replayed is not None:
+        await session.commit()
+        return
+    # The decision is made; these reads only explain it.
+    found = (
+        await session.execute(
+            select(Delivery.status, Delivery.endpoint_id).where(Delivery.id == delivery_id)
+        )
+    ).first()
+    await session.rollback()
+    if found is None:
+        raise NotFoundError("delivery", delivery_id)
+    status, endpoint_id = found
+    if status is not DeliveryStatus.FAILED:
+        raise NotReplayableError(
+            f"delivery {delivery_id!r} is {status}; only failed deliveries can be replayed"
+        )
+    raise _endpoint_disabled(endpoint_id)
+
+
+async def replay_failed(
+    session: AsyncSession, endpoint_id: str, *, now: datetime, attempt_budget: int
+) -> int:
+    """Replays every failed delivery of the endpoint in one conditional `UPDATE`."""
+    replayed = (
+        await session.scalars(
+            update(Delivery)
+            .where(Delivery.endpoint_id == endpoint_id, *_replayable())
+            .values(_replayed(now, attempt_budget))
+            .returning(Delivery.id)
+        )
+    ).all()
+    if replayed:
+        await session.commit()
+        return len(replayed)
+    enabled = await session.scalar(select(Endpoint.enabled).where(Endpoint.id == endpoint_id))
+    await session.rollback()
+    if enabled is None:
+        raise NotFoundError("endpoint", endpoint_id)
+    if not enabled:
+        raise _endpoint_disabled(endpoint_id)
+    return 0
+
+
+def _replayable() -> tuple[ColumnElement[bool], ...]:
+    """Failed, and its endpoint enabled: checked by the replay `UPDATE` itself."""
+    enabled_endpoints = select(Endpoint.id).where(Endpoint.enabled.is_(True))
+    return (Delivery.status == DeliveryStatus.FAILED, Delivery.endpoint_id.in_(enabled_endpoints))
+
+
+def _replayed(now: datetime, attempt_budget: int) -> dict[str, object]:
+    return {
+        "status": DeliveryStatus.PENDING,
+        "failure_reason": None,
+        "attempts_used": 0,
+        "attempt_budget": attempt_budget,
+        "next_attempt_at": now,
+        "updated_at": now,
+    }
+
+
+def _endpoint_disabled(endpoint_id: str) -> NotReplayableError:
+    return NotReplayableError(
+        f"endpoint {endpoint_id!r} is disabled; enable it before replaying its deliveries"
+    )
 
 
 async def claim_next(

@@ -10,6 +10,10 @@ class NotFoundError(Exception):
         self.resource_id = resource_id
 
 
+class NotReplayableError(Exception):
+    """A replay was refused: the delivery isn't failed, or its endpoint is disabled."""
+
+
 class IdempotencyKeyReusedError(Exception):
     """The key belongs to an event with a different payload."""
 
