@@ -1,9 +1,10 @@
 import asyncio
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Coroutine
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -14,6 +15,11 @@ from webhooks.settings import Settings
 from webhooks.worker import DeliveryWorker
 
 MOCK_OK = "http://test/mock/ok"
+RECEIVER = "https://receiver.example/hook"
+# Past any backoff the default policy can pick (its cap is 300s), so a retry is due.
+PAST_ANY_BACKOFF = 301
+
+Handler = Callable[[httpx.Request], Coroutine[Any, Any, httpx.Response]]
 
 
 class FakeClock:
@@ -64,6 +70,25 @@ def worker(app: FastAPI, client: AsyncClient) -> DeliveryWorker:
     return DeliveryWorker(runtime.sessions, client, runtime.clock, runtime.settings)
 
 
+def worker_with_transport(app: FastAPI, handler: Handler, **settings: Any) -> DeliveryWorker:
+    """A worker that sends to `handler` instead; `settings` overrides the app's."""
+    runtime = runtime_of(app)
+    http = AsyncClient(transport=httpx.MockTransport(handler))
+    return DeliveryWorker(
+        runtime.sessions, http, runtime.clock, runtime.settings.model_copy(update=settings)
+    )
+
+
+def responses(*statuses: int) -> Handler:
+    """A receiver that answers with these statuses in turn."""
+    remaining = list(statuses)
+
+    async def receiver(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(remaining.pop(0))
+
+    return receiver
+
+
 async def create_endpoint(
     client: AsyncClient,
     url: str = MOCK_OK,
@@ -96,6 +121,11 @@ async def list_deliveries(client: AsyncClient) -> list[dict[str, Any]]:
     response = await client.get("/deliveries")
     assert response.status_code == 200, response.text
     return response.json()
+
+
+async def only_delivery(client: AsyncClient) -> dict[str, Any]:
+    [delivery] = await list_deliveries(client)
+    return (await client.get(f"/deliveries/{delivery['id']}")).json()
 
 
 async def eventually(predicate: Callable[[], bool], within: float = 2.0) -> None:
