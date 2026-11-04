@@ -97,7 +97,13 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Caught along the way:** the Nuxt test environment timed out on setup while `make dev` was running beside it, so it stopped the dev server for the test runs instead of raising timeouts.
 - **Output:** designed loading, empty, and error states on every view, consistent formatting, 21 before/after screenshots in `docs/screenshots/`; 157 pytest and 94 Vitest tests.
 
-### 10. "Replay failed" only when there is something to replay (2026-11-04)
+### 10. Cutting Playwright e2e (2026-11-04)
+
+- **Asked:** on a tight schedule, take Playwright off the plan and the tickets and move it to "With more time", while keeping the CI ticket.
+- **Where I steered:** the AI asked two questions before editing. The axe checks only ran through Playwright, so I chose to defer them with it rather than move them into Vitest. I had the change go on its own branch off `main`, not on the in-progress endpoint branch.
+- **Output:** PLAN.md without Playwright (Approach, Tests, traceability, build order) and a "With more time" entry for it; ticket #8 rescoped to CI only, and #9's README scope updated.
+
+### 11. "Replay failed" only when there is something to replay (2026-11-04)
 
 - **Asked:** a UX question: does "Replay failed" make sense on an endpoint with no failed deliveries? The AI said no. The button looked actionable and the zero case only surfaced as a toast after the click. It checked the API and found the view couldn't tell (no count on `EndpointOut`), then laid out three options and recommended adding the count.
 - **Steered:** the user picked that option and asked for it on top of the freshly merged UX fixes on `main`, rather than on the stale ticket branch the checkout was on.
