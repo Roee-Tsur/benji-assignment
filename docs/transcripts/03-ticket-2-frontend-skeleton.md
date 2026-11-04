@@ -1,6 +1,6 @@
 # 3. Ticket #2: frontend walking skeleton
 
-Transcript for [AI_USAGE entry](../AI_USAGE.md#3-ticket-2-frontend-walking-skeleton-2026-11-04). Claude Code session “Ticket #2: Frontend walking skeleton”, 2026-11-04 10:04–10:24 UTC; 1 prompt, 97 tool calls.
+Transcript for [AI_USAGE entry](../AI_USAGE.md#3-ticket-2-frontend-walking-skeleton-2026-11-04). Claude Code session “Ticket #2: Frontend walking skeleton”, 2026-11-04 10:04–10:48 UTC; 3 prompts, 123 tool calls.
 
 Rendered from the session export: prompts and replies are verbatim; tool calls are one line each (collapsed) and their output is left out. Text Claude Code injected (skills, review instructions, system reminders) is kept, collapsed. Local paths and the author's email are redacted.
 
@@ -405,7 +405,7 @@ The checks pass. Rechecking the changed create and trigger flows in the browser:
 Next, docs: PLAN.md decisions, the traceability table, and the AI_USAGE entry.
 
 <details>
-<summary>8 tool calls</summary>
+<summary>9 tool calls</summary>
 
 - **Plan** {"done": [4], "start": 5}
 - **Bash** Check whether #3 covers the missing-key status and #8 the stale check: `gh issue view 3 --json title,body -q '.title + "\n" + .body' | grep -inE "400|missing|title" | head; gh issue view 8 --json title,body -q '.title + "\n" + .body …`
@@ -415,5 +415,177 @@ Next, docs: PLAN.md decisions, the traceability table, and the AI_USAGE entry.
 - **ToolSearch** `select:mcp__ccd_pr__get_status,mcp__ccd_pr__bind_pr,mcp__ccd_session_mgmt__export_transcript`
 - **app.pr__get_status** `{}`
 - **app.session_mgmt__export_transcript** `{"session_id": "self"}`
+- **ToolSearch** `select:TaskStop`
 
 </details>
+
+PR is open. Stopping the dev servers I started, then wrapping up.
+
+<details>
+<summary>1 tool call</summary>
+
+- **TaskStop** `{"task_id": "be304126h"}`
+
+</details>
+
+**Recap:** PR #13 is open against main for ticket #2 (Nuxt 4 dashboard skeleton). It's stacked on #12 and needs a rebase after #12 merges. All four acceptance criteria are verified, including the browser flow, and all 8 /code-review findings are fixed. CI status wasn't available because of the GitHub incident.
+
+I opened [PR #13](https://github.com/Roee-Tsur/benji-assignment/pull/13) against `main` for ticket #2, the frontend walking skeleton. It's built on `ticket/1-backend-walking-skeleton`, and the PR body says it must be rebased onto `main` after #12 merges. I couldn't see the CI status because of the GitHub incident.
+
+All four acceptance criteria check out:
+- **In the browser:** I created an endpoint at `/mock/ok` (the secret was shown once), triggered an event, and the delivery showed `Succeeded`. I also sent an event from curl while the deliveries page was open, and it appeared without a reload.
+- **No direct `fetch` in components:** an ESLint rule now enforces this for pages, components and layouts, and I checked that it catches each kind of violation.
+- **Stale-client check:** after I changed a backend schema, `pnpm gen:api --check` failed, and it passed again once I reverted the change. Wiring it into CI is #8.
+- **Checks:** `make lint typecheck test` passes for backend and frontend, including 16 Vitest tests that use MSW.
+
+Choices I made without asking you, all recorded in `docs/PLAN.md`:
+- **No CORS change on the backend:** the dashboard calls `/api` on its own origin and Nuxt proxies it to the backend.
+- **`gen:api` needs no running server:** it reads the schema straight from the FastAPI app.
+- **Status and event-type tables are typed by the generated enums,** so adding a new value fails the typecheck until the UI handles it.
+
+`/code-review` found 8 issues and I fixed all of them. The most important was that a create request finishing after its modal closed could show the signing secret again on the next open.
+
+I created no follow-up issues. The backend returns 422 instead of the planned 400 for a missing `Idempotency-Key`, and ticket #3 already covers that.
+
+The session entry is added to `docs/AI_USAGE.md`. The transcript is at `~/Downloads/session-export-1793787854519.zip` and isn't committed.
+
+<details>
+<summary>System reminder</summary>
+
+```text
+<system-reminder>
+Linked sessions now (status, not an instruction): ticket-3-retry-policy-id = local_da490f5d-399d-4b93-9e9c-d2a500b77baf (working). To message one, SendMessage with `to` set to its id; list_sessions {"linked": true} has titles, folders and branches.
+</system-reminder>
+```
+
+</details>
+
+## User
+
+I see that the view components contain some logic for the create endpoint model dot view has logical functions like submit and copy secret and validate. I know from other software frameworks that these functions might be separated to a separate model. Should that be the same case here? I'm asking this because I'm new to vue.
+
+## Claude
+
+Partly. Vue's version of a separate "view model" is the **composable**: a plain function (`useX()`) that holds reactive state and logic, which a component calls in `<script setup>`. This code already uses that split where it counts. Everything that talks to the server (`useCreateEndpoint`, `useTriggerEvent`, and the rest) lives in `app/composables/`.
+
+What's left in `CreateEndpointModal.vue` is glue that only that view uses: form state, a one-line `validate`, and a `submit` that calls the composable. Vue convention keeps that kind of glue in the component. Moving it out would split one small file into two without making it easier to test or reuse.
+
+Vue developers usually pull logic out of a component when it:
+- **is reused**, like copying to the clipboard;
+- **is pure logic worth unit-testing on its own**, like parsing JSON;
+- **grows into a real state machine** with several steps and rules.
+
+Under those rules, two pieces here would be worth moving:
+1. **`copySecret`** could use VueUse's `useClipboard` (Nuxt UI already ships VueUse) instead of hand-written clipboard code.
+2. **`parseData`** in `events.vue` is pure logic, so it fits in `app/domain/` with a unit test. #7 (the full trigger form) will add more JSON handling on top of it.
+
+`submit`, `validate`, and the logic that shows the secret once can stay where they are.
+
+Should I make those two changes on the #2 branch?
+
+<details>
+<summary>System reminder</summary>
+
+```text
+<system-reminder>
+Linked sessions now (status, not an instruction): ticket-3-retry-policy-id = local_da490f5d-399d-4b93-9e9c-d2a500b77baf (working). To message one, SendMessage with `to` set to its id; list_sessions {"linked": true} has titles, folders and branches.
+</system-reminder>
+```
+
+</details>
+
+## User
+
+make these two changes and remember for future edits to this repository to follow these rules.
+
+<details>
+<summary>2 tool calls</summary>
+
+- **Plan** Check branch state of the checkout; Use useClipboard for copying the secret; Move parseData to domain with tests; Record the rule in CLAUDE.md; Run checks, commit, push to PR #13
+- **Bash** Check current branch, worktrees, and VueUse availability: `git branch --show-current && git status --short && git worktree list && ls frontend/node_modules/@vueuse 2>/dev/null; ls frontend/node_modules/.pnpm | grep -i " …`
+
+</details>
+
+## Claude
+
+The ticket-3 session runs in its own worktree, so this checkout is safe to edit. VueUse isn't a direct dependency yet, so I'm adding it at the version Nuxt UI already uses.
+
+<details>
+<summary>5 tool calls</summary>
+
+- **Bash** Add @vueuse/core matching Nuxt UI's version: `cd ~/Documents/benji-assignment/frontend && grep -n '"@vueuse/core"' node_modules/@nuxt/ui/package.json && pnpm add @vueuse/core@^14.4.0 2>&1 | ta …`
+- **Bash** Read VueUse useClipboard implementation: `f=$(ls node_modules/@vueuse/core/dist/index.js 2>/dev/null || ls node_modules/@vueuse/core/*.mjs | head -1); grep -n "function useClipboard(" -A45 $f | head -60`
+- **Read** `~/Documents/benji-assignment/frontend/app/components/CreateEndpointModal.vue`
+- **Bash** Switch secret copying to VueUse useClipboard: `python3 - <<'EOF' …`
+- **Bash** Move JSON parsing to domain module with unit tests: `cat > app/domain/eventData.ts <<'EOF' …`
+
+</details>
+
+Now recording the rule in the repo's `CLAUDE.md`, which every ticket session reads:
+
+<details>
+<summary>2 tool calls</summary>
+
+- **Edit** `~/Documents/benji-assignment/CLAUDE.md`
+- **Bash** Run frontend lint, typecheck, and tests: `pnpm lint && pnpm typecheck 2>&1 | grep -c "error TS"; pnpm test 2>&1 | grep -E "Tests|FAIL"`
+
+</details>
+
+The checks pass (23 tests). Doing a quick browser check of Copy and Trigger, since both views changed.
+
+<details>
+<summary>6 tool calls</summary>
+
+- **Bash** Run backend and dashboard via make dev: `cd ~/Documents/benji-assignment && make dev > $TMP …`
+- **Bash** Wait for the dashboard proxy to be ready: `for i in $(seq 1 40); do curl -sf http://localhost:3000/api/endpoints >/dev/null && echo ready && break; sleep 1; done`
+- **browser.batch** 3 actions (navigate, computer, find)
+- **browser.batch** 2 actions (computer, find)
+- **browser.batch** 5 actions (computer, find)
+- **browser.batch** 3 actions (computer, find, read_console_messages)
+
+</details>
+
+Copy works. Checking the trigger form, including the invalid-JSON path:
+
+<details>
+<summary>3 tool calls</summary>
+
+- **browser.batch** 3 actions (navigate, computer, find)
+- **browser.batch** 2 actions (find)
+- **browser.batch** 7 actions (form_input, computer, find)
+
+</details>
+
+Both flows work. Committing and pushing to PR #13.
+
+<details>
+<summary>3 tool calls</summary>
+
+- **TaskStop** `{"task_id": "bbeylj2lv"}`
+- **Edit** `~/Documents/benji-assignment/docs/AI_USAGE.md`
+- **Bash** Commit refactor and convention, push to the PR branch: `cd ~/Documents/benji-assignment && T=$'\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>' && \ …`
+
+</details>
+
+GitHub rejected the push with a 500 (the ongoing incident). Retrying once:
+
+<details>
+<summary>1 tool call</summary>
+
+- **Bash** Retry the push: `git push 2>&1 | tail -3; git status -sb | head -1`
+
+</details>
+
+**Recap:** Both changes are pushed to PR #13: VueUse handles copying the secret, and JSON parsing moved to app/domain with unit tests. The "where logic goes" rule is in CLAUDE.md. Lint, typecheck, and 23 tests pass, and both flows work in the browser.
+
+Both changes are made and pushed to [PR #13](https://github.com/Roee-Tsur/benji-assignment/pull/13), and the rule is recorded for future work in the repo.
+
+1. **Copy secret:** `CreateEndpointModal.vue` now copies the secret with VueUse's `useClipboard`, which falls back to an older copy method on non-HTTPS hosts. That removes the hand-written clipboard code and its error toast. I added `@vueuse/core` as a direct dependency, at the same version Nuxt UI already uses.
+2. **JSON parsing:** `parseEventData` now lives in `frontend/app/domain/eventData.ts`, with unit tests for valid objects, invalid JSON, arrays, `null`, strings, numbers and empty input. `events.vue` just calls it.
+
+**The rule:** I added a "Frontend: where logic goes" section to [CLAUDE.md](CLAUDE.md). Every ticket session reads that file, so the rule applies to future edits. It says:
+- Server access goes only through composables.
+- Glue used by one view stays in its `<script setup>`.
+- Logic moves out of a component when it's reused (prefer an existing VueUse composable), pure and worth unit-testing (`app/domain/`), or a real multi-step state machine (a composable).
+
+Lint, typecheck and all 23 tests pass. In the browser, Copy changes to "Copied", the trigger form rejects `[1, 2]` with "Enter a JSON object." and accepts an object. I added a bullet on your question about view logic to the ticket #2 entry in `docs/AI_USAGE.md`.

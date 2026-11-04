@@ -1,6 +1,6 @@
 # 6. Ticket #5: replay + disable
 
-Transcript for [AI_USAGE entry](../AI_USAGE.md#6-ticket-5-replay--disable-2026-11-04). Claude Code session “Ticket #5: Replay + disable”, 2026-11-04 11:40–11:48 UTC; 1 prompt, 40 tool calls.
+Transcript for [AI_USAGE entry](../AI_USAGE.md#6-ticket-5-replay--disable-2026-11-04). Claude Code session “Ticket #5: Replay + disable”, 2026-11-04 11:40–11:48 UTC; 1 prompt, 43 tool calls.
 
 Rendered from the session export: prompts and replies are verbatim; tool calls are one line each (collapsed) and their output is left out. Text Claude Code injected (skills, review instructions, system reminders) is kept, collapsed. Local paths and the author's email are redacted.
 
@@ -404,10 +404,31 @@ Review fix committed. Now the docs: PLAN, ADR 0003, and the AI_USAGE entry.
 Pushing and opening the PR against `main`.
 
 <details>
-<summary>3 tool calls</summary>
+<summary>5 tool calls</summary>
 
 - **Plan** (next step)
 - **Bash** Push branch and open PR against main: `git push -qu origin ticket/5-replay-disable 2>&1 | tail -2; cat > "$TMPDIR/pr5.md" <<'EOF' …`
 - **ToolSearch** `select:mcp__ccd_pr__get_status,mcp__ccd_pr__bind_pr,mcp__ccd_session_mgmt__export_transcript`
+- **app.pr__get_status** `{}`
+- **app.session_mgmt__export_transcript** `{"session_id": "self"}`
 
 </details>
+
+**Recap:** Opened PR #17 (#5 Replay + disable) against main, stacked on #16 → #15 → #12. It adds replay, replay-failed, disable per ADR 0003, and the fail, flaky and slow mock modes. All 148 tests pass with lint and pyright clean. The repo has no CI checks yet, and nothing is merged.
+
+I opened [PR #17](https://github.com/Roee-Tsur/benji-assignment/pull/17), "#5 Replay + disable", against `main`. Its body says it is stacked on #16 (→ #15 → #12) and should be merged after them. `make lint typecheck test` passes with 148 tests, and every acceptance criterion has a test; the PR body maps each criterion to its test.
+
+**What's built:**
+- **Disable:** turning an endpoint off fails its `pending` deliveries with `endpoint_disabled`, in the same transaction. Attempts already `in progress` finish. Turning it back on sends nothing.
+- **Re-check when claiming:** if the worker claims a delivery whose endpoint is disabled, it fails it instead of sending, and claims the next one.
+- **Replay** (`POST /deliveries/{id}/replay`) and **replay-failed** (`POST /endpoints/{id}/replay-failed`) are each one conditional `UPDATE`: the delivery must be `failed` and its endpoint enabled. Otherwise the API returns a 409, or a 404 if the delivery or endpoint doesn't exist.
+- **Mock receiver modes:** `/mock/fail`, `/mock/flaky?n=` and `/mock/slow?s=`.
+
+**Choices I made without asking (flagged in the PR, and recorded in `docs/PLAN.md` / ADR 0003):**
+- A `pending` delivery found on a disabled endpoint at claim time is failed rather than skipped, so it can't sit `pending` forever.
+- An in-flight attempt that would retry after its endpoint is disabled fails with `endpoint_disabled` instead of going back to `pending`.
+- `flaky` counts the requests it receives per `webhook-id`, in memory, like a real receiver would. It doesn't read our own attempt count.
+
+`/code-review` (high) found 4 issues. I fixed the real one: `/mock/slow` held a database connection while it slept. The other three were minor and are listed in the PR as skipped. I created no follow-up issues.
+
+The `docs/AI_USAGE.md` entry is committed. The session transcript is exported to `~/Downloads/session-export-1793792917198.zip` and not committed, so the user can review it first.

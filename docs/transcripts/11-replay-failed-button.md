@@ -1,6 +1,6 @@
 # 11. "Replay failed" only when there is something to replay
 
-Transcript for [AI_USAGE entry](../AI_USAGE.md#11-replay-failed-only-when-there-is-something-to-replay-2026-11-04). Claude Code session “Replay failed button UX”, 2026-11-04 15:37–16:09 UTC; 2 prompts, 41 tool calls.
+Transcript for [AI_USAGE entry](../AI_USAGE.md#11-replay-failed-only-when-there-is-something-to-replay-2026-11-04). Claude Code session “Replay failed button UX”, 2026-11-04 15:37–16:12 UTC; 5 prompts, 61 tool calls.
 
 Rendered from the session export: prompts and replies are verbatim; tool calls are one line each (collapsed) and their output is left out. Text Claude Code injected (skills, review instructions, system reminders) is kept, collapsed. Local paths and the author's email are redacted.
 
@@ -110,12 +110,109 @@ Adding a small page test for the button's label and disabled state.
 The switch's aria-label also ends with the URL, so I'm matching on the full replay label instead.
 
 <details>
-<summary>5 tool calls</summary>
+<summary>6 tool calls</summary>
 
 - **Bash** Fix selector and run all frontend checks: `python3 - <<'EOF' …`
 - **Bash** Commit frontend; find docs to update: `cd ~/Documents/benji-assignment && git add -A frontend && git commit -q -m "Show the failed count on \"Replay failed\" and disable it at zero …`
 - **Bash** Find endpoint API mentions in docs: `grep -n "GET /endpoints\|/endpoints" docs/PLAN.md README.md | head; grep -n -i "replay" GLOSSARY.md`
 - **Bash** Update PLAN and AI_USAGE, commit docs: `python3 - <<'EOF' …`
 - **ToolSearch** `select:mcp__ccd_session_mgmt__export_transcript`
+- **app.session_mgmt__export_transcript** `{"session_id": "self"}`
 
 </details>
+
+**Recap:** "Replay failed" now shows the count ("Replay 3 failed") and is disabled when an endpoint has no failed deliveries. It's in 3 commits on `endpoint-failed-count`, branched from the latest main. Tests pass, but I haven't checked it in the running app, and nothing is pushed.
+
+**Next step asked:** Push the branch and open a PR?
+
+I've implemented option 1. The "Replay failed" button now reads "Replay 3 failed" when there's something to replay, and is disabled when there's nothing. The work is in 3 commits on a new `endpoint-failed-count` branch, which I cut from main after pulling the latest UX fixes. Your checkout was on the old ticket #2 branch, so I didn't build on that. Nothing is pushed.
+
+All tests pass (158 pytest, 101 Vitest), along with lint and typecheck. I haven't looked at the page in the running app.
+
+- **Backend:** the endpoints list now returns `failed_count` for each endpoint. It's computed the same way as the existing delivery count on events. A new test checks the count per endpoint and that it drops to 0 after a replay.
+- **Frontend** ([endpoints.vue](frontend/app/pages/endpoints.vue)):
+  - The button is disabled when the count is 0, and its tooltip says "No failed deliveries to replay".
+  - The list refreshes every 5s, so the count keeps up with deliveries that fail while the page is open. It also refreshes right after a replay.
+  - The button's screen-reader name now starts with the visible label ("Replay 3 failed: <url>").
+  - New page test: [endpointsPage.test.ts](frontend/test/nuxt/endpointsPage.test.ts).
+- **Docs:** [PLAN.md](docs/PLAN.md) now covers the new field, the button's behaviour and the new tests. There's a new entry in [AI_USAGE.md](docs/AI_USAGE.md). I didn't touch GLOSSARY.md or the ADRs, since no new term or decision needed them.
+- **Transcript:** exported to `~/Downloads/session-export-1793808541103.zip`, not committed.
+
+There's no GitHub ticket for this, so the branch doesn't follow the `ticket/N-…` naming.
+
+## User
+
+Open a PR
+
+<details>
+<summary>5 tool calls</summary>
+
+- **Plan** Push branch; Open PR and bind it
+- **Bash** Push branch and view a recent PR body format: `git push -u origin endpoint-failed-count 2>&1 | tail -3 && gh pr list --state merged --limit 2 --json number,title,body --jq '.[0].body' | head -40`
+- **Bash** Open the pull request: `gh pr create --base main --head endpoint-failed-count --title "Show the failed count on \"Replay failed\" and disable it at zero" --body "$(cat <<'EOF' …`
+- **ToolSearch** `select:mcp__ccd_pr__get_status,mcp__ccd_pr__bind_pr`
+- **app.pr__get_status** `{}`
+
+</details>
+
+## Claude
+
+**Recap:** PR #23 is open against main. It's mergeable and has no CI checks reported yet. It hasn't been checked in the running app.
+
+I opened the PR: [Roee-Tsur/benji-assignment#23](https://github.com/Roee-Tsur/benji-assignment/pull/23). It's mergeable into main with no conflicts, and no CI checks have reported yet. The description says I haven't checked the button in the running app; only the tests cover it.
+
+## User
+
+Fix merge conflicts.
+
+<details>
+<summary>3 tool calls</summary>
+
+- **Plan** Merge latest main into the branch; Resolve conflicts; Run checks, commit and push
+- **Bash** Fetch and merge latest main into the branch: `git status --short && git branch --show-current && git fetch origin && git log --oneline HEAD..origin/main && git merge origin/main 2>&1 | tail -10`
+- **Bash** Show the conflicted hunks: `git diff --name-only --diff-filter=U; git diff | head -120`
+
+</details>
+
+## Claude
+
+Main cut Playwright, so I'm keeping its e2e-free table and re-adding our test links. In AI_USAGE, main's entry stays #10 and ours becomes #11.
+
+<details>
+<summary>4 tool calls</summary>
+
+- **Bash** Resolve both doc conflicts: `python3 - <<'EOF' …`
+- **Bash** Commit merge resolution and push: `git diff --name-only a70e024 origin/main && git add docs/PLAN.md docs/AI_USAGE.md && git commit -q --no-edit && git push 2>&1 | tail -1 && git status --short && …`
+- **app.pr__get_status** `{}`
+- **Bash** Check PR mergeability on GitHub: `gh pr view 23 --json mergeable,mergeStateStatus,headRefOid`
+
+</details>
+
+**Recap:** PR #23 has no conflicts now: I merged the latest main into the branch, resolved the two doc conflicts, and pushed. GitHub shows it as mergeable. I didn't re-run the tests because main only changed docs and tooling files.
+
+The merge conflicts are fixed and pushed. GitHub now shows [Roee-Tsur/benji-assignment#23](https://github.com/Roee-Tsur/benji-assignment/pull/23) as mergeable with no conflicts.
+
+The conflicts came from your Playwright-cut PR (#22), and both were in docs:
+- **`docs/PLAN.md`:** I kept main's test table, which no longer mentions e2e, and re-added the new endpoint failed-count tests to the endpoint management row.
+- **`docs/AI_USAGE.md`:** main's Playwright entry stays as #10, and this session's entry is now #11.
+
+I didn't re-run the tests. Main only changed docs, `.gitignore` and the work-ticket skill, so no code was affected.
+
+## User
+
+then merge the pr and delete the branch
+
+<details>
+<summary>3 tool calls</summary>
+
+- **Plan** Merge PR and delete remote branch; Update local main, delete local branch
+- **Bash** Merge PR 23 and delete its branch: `gh pr merge 23 --merge --delete-branch 2>&1 | tail -5; gh pr view 23 --json state,mergeCommit --jq '.state + " " + .mergeCommit.oid'`
+- **Bash** Check local branch and remote state after merge: `git branch --show-current && git fetch --prune -q && git branch -a | grep -i failed-count; git log --oneline -1 main; git status --short`
+
+</details>
+
+## Claude
+
+**Recap:** PR #23 is merged into main as a merge commit (74a435a). The endpoint-failed-count branch is deleted locally and on GitHub. The local checkout is on an up-to-date main.
+
+I merged [Roee-Tsur/benji-assignment#23](https://github.com/Roee-Tsur/benji-assignment/pull/23) into main with a merge commit (`74a435a`). The `endpoint-failed-count` branch is deleted both on GitHub and locally. Your checkout is now on main and up to date.

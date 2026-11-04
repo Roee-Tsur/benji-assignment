@@ -1,6 +1,6 @@
 # 13. Ticket #9: final docs pass
 
-Transcript for [AI_USAGE entry](../AI_USAGE.md#13-ticket-9-final-docs-pass-2026-11-04). Claude Code session “Work ticket 9”, 2026-11-04 16:12–16:31 UTC; 3 prompts, 52 tool calls.
+Transcript for [AI_USAGE entry](../AI_USAGE.md#13-ticket-9-final-docs-pass-2026-11-04). Claude Code session “Work ticket 9”, 2026-11-04 16:12–16:31 UTC; 3 prompts, 54 tool calls.
 
 Rendered from the session export: prompts and replies are verbatim; tool calls are one line each (collapsed) and their output is left out. Text Claude Code injected (skills, review instructions, system reminders) is kept, collapsed. Local paths and the author's email are redacted.
 
@@ -346,9 +346,24 @@ Yes, rebuild it
 The branch is rebuilt cleanly on `main` and pushed. Opening the PR:
 
 <details>
-<summary>2 tool calls</summary>
+<summary>3 tool calls</summary>
 
 - **Bash** Open the PR for ticket 9: `cd $SCRATCHPAD/wt9 && gh pr create --head ticket/9-final- …`
 - **app.session_mgmt__export_transcript** `{"session_id": "self"}`
+- **app.pr__get_status** `{}`
 
 </details>
+
+**Recap:** PR #27 (#9 Final docs pass) is open: rebuilt on main, mergeable, no CI checks reported yet. `fix/ci-setup-uv-tag` still has my 4 docs commits on top of its CI fix, unpushed. The transcript is exported to Downloads.
+
+The PR is open: [Roee-Tsur/benji-assignment#27](https://github.com/Roee-Tsur/benji-assignment/pull/27). I rebuilt the branch from `main` and pushed it, and GitHub shows it as mergeable. No CI checks have reported on it yet.
+
+- **Still to clean up:** your local `fix/ci-setup-uv-tag` branch still has my 4 docs commits on top of its own CI fix (`eb166f8`), and nothing on it is pushed. Drop them before that branch is pushed again, or its PR will carry the docs work. I left it alone because the other session is active in that folder. Once it's free, this removes them:
+  ```bash
+  git switch fix/ci-setup-uv-tag && git reset --hard eb166f8
+  ```
+- **Leftover worktree:** I built the PR branch in a worktree at `$SCRATCHPAD/wt9`. Remove it once the PR is merged:
+  ```bash
+  git worktree remove $SCRATCHPAD/wt9
+  ```
+- **Transcript:** exported to `~/Downloads/session-export-1793809883426.zip`, and not committed. After you review it, add it and the earlier sessions' transcripts to `docs/transcripts/`.

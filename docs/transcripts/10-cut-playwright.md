@@ -1,6 +1,6 @@
 # 10. Cutting Playwright e2e
 
-Transcript for [AI_USAGE entry](../AI_USAGE.md#10-cutting-playwright-e2e-2026-11-04). Claude Code session “Playwright scope adjustment”, 2026-11-04 16:06–16:08 UTC; 1 prompt, 19 tool calls.
+Transcript for [AI_USAGE entry](../AI_USAGE.md#10-cutting-playwright-e2e-2026-11-04). Claude Code session “Playwright scope adjustment”, 2026-11-04 16:06–16:08 UTC; 1 prompt, 22 tool calls.
 
 Rendered from the session export: prompts and replies are verbatim; tool calls are one line each (collapsed) and their output is left out. Text Claude Code injected (skills, review instructions, system reminders) is kept, collapsed. Local paths and the author's email are redacted.
 
@@ -55,12 +55,32 @@ I'm on a tight schedule, so I want to take off the playwright from the plan and 
 Plan docs are updated; now updating the GitHub tickets.
 
 <details>
-<summary>5 tool calls</summary>
+<summary>7 tool calls</summary>
 
 - **Plan** (next step)
 - **Bash** Rescope ticket #8 to CI and update #9: `S=$SCRATCHPAD && cat > $S/8.md <<'EOF' …`
 - **Plan** (next step)
 - **Bash** Commit, push, and open PR: `git add docs/PLAN.md .claude/skills/work-ticket/SKILL.md .gitignore && git commit -q -m "Cut Playwright e2e and axe checks to 'With more time' …`
 - **ToolSearch** `select:mcp__ccd_pr__get_status,mcp__ccd_pr__bind_pr,mcp__ccd_session_mgmt__export_transcript`
+- **app.pr__get_status** `{}`
+- **app.session_mgmt__export_transcript** `{"session_id": "self"}`
 
 </details>
+
+**Recap:** Playwright and its axe checks are out of the plan and listed under "With more time". Ticket #8 is now just CI, and #9 no longer mentions e2e. Committed on `drop-playwright` and opened as PR #22, which is mergeable and has no CI checks. It's waiting for you to merge it.
+
+Playwright is out of the plan and the tickets, and it's now listed under "With more time". The CI ticket stays. The change is committed and open as [PR #22](https://github.com/Roee-Tsur/benji-assignment/pull/22) for you to merge; the repo has no CI checks yet, so nothing ran on it.
+
+- **[docs/PLAN.md](docs/PLAN.md):**
+  - I took Playwright out of the Approach table, Tests, Accessibility, the traceability column and the build order.
+  - The CI row now reads lint + typecheck + pytest + Vitest + stale API client check.
+  - The "With more time" entry describes the three e2e flows plus the axe checks.
+- **Other files:**
+  - I removed "and e2e once it exists" from the `work-ticket` skill.
+  - I removed the Playwright output folders from `.gitignore`.
+  - I added session 10 to `docs/AI_USAGE.md`.
+- **GitHub:**
+  - [#8](https://github.com/Roee-Tsur/benji-assignment/issues/8) is renamed to "CI" and covers only the Actions workflow. I added one acceptance criterion: a stale API client must fail the workflow.
+  - [#9](https://github.com/Roee-Tsur/benji-assignment/issues/9) no longer mentions e2e in its README scope.
+- **Branch:** as you chose, the work is on `drop-playwright` off `main`, in a separate copy of the repo at `.claude/worktrees/drop-playwright`. Your `endpoint-failed-count` checkout is untouched, including the uncommitted change to `frontend/app/api/schema.d.ts` that showed up during this session.
+- **Transcript:** exported to `~/Downloads/session-export-1793808512647.zip` and not committed, for you to review.

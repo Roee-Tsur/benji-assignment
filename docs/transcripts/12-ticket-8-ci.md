@@ -1,6 +1,6 @@
 # 12. Ticket #8: CI
 
-Transcript for [AI_USAGE entry](../AI_USAGE.md#12-ticket-8-ci-2026-11-04). Claude Code session “Work ticket 8”, 2026-11-04 16:13–16:20 UTC; 3 prompts, 27 tool calls.
+Transcript for [AI_USAGE entry](../AI_USAGE.md#12-ticket-8-ci-2026-11-04). Claude Code session “Work ticket 8”, 2026-11-04 16:13–16:54 UTC; 5 prompts, 46 tool calls.
 
 Rendered from the session export: prompts and replies are verbatim; tool calls are one line each (collapsed) and their output is left out. Text Claude Code injected (skills, review instructions, system reminders) is kept, collapsed. Local paths and the author's email are redacted.
 
@@ -217,3 +217,134 @@ Tip: For a deeper cloud-based review, try /ultrareview next time.
 - **ToolSearch** `select:mcp__ccd_session_mgmt__export_transcript`
 
 </details>
+
+PR description is updated; exporting the transcript now.
+
+<details>
+<summary>1 tool call</summary>
+
+- **app.session_mgmt__export_transcript** `{"session_id": "self"}`
+
+</details>
+
+**Recap:** The CI workflow and docs are pushed to draft PR #24, and every check passes locally, including the stale-client failure. The GitHub Actions run is still queued because of the outage.
+
+Ticket #8 is finished and checked locally, but not yet on GitHub: the Actions run for [PR #24](https://github.com/Roee-Tsur/benji-assignment/pull/24) is still queued because of the outage.
+
+- **Workflow:** `.github/workflows/ci.yml` runs on PRs and on pushes to `main`. A backend job runs ruff, pyright and pytest. A frontend job runs `pnpm gen:api --check`, eslint, typecheck and Vitest, and installs uv because that check reads the schema from the FastAPI app.
+- **Local checks:** `make lint typecheck test` passes (158 pytest, 101 Vitest). The stale check failed with exit 1 when I appended a line to `schema.d.ts`, and passed again once I restored the file.
+- **Review:** `/code-review` at low effort found nothing.
+- **Docs:** I added a CI link to the PLAN traceability table and entry 12 to `docs/AI_USAGE.md`.
+- **PR:** it stays a draft. The description marks both acceptance criteria as pending a real run on GitHub.
+- **Transcript:** exported to `~/Downloads/session-export-1793809217725.zip` and not committed.
+
+When Actions recovers, two things are left: a green run on the PR, and a deliberately stale commit whose failing run gets linked in the PR and then reverted. After that the PR can come out of draft.
+
+Tip: For a deeper cloud-based review, try /ultrareview next time.
+
+## User
+
+I want to assume that it is working, so I can merge the code right now and possibly even submit it now. So you can add a note that the PR was merged during the GitHub incident, but we assumed it was working.
+
+<details>
+<summary>7 tool calls</summary>
+
+- **Plan** Add incident note to AI_USAGE and push; Open follow-up issue to confirm CI; Update PR body and mark ready
+- **Bash** Add incident note, commit, push: ``perl -0 -i -pe 's{- \*\*Output:\*\* `\.github/workflows/ci\.yml`; draft PR pending the CI confirmation\.}{- **Merged during the GitHub Actions incident:** I cho …``
+- **Plan** (next step)
+- **Bash** Create follow-up issue for CI confirmation: `gh issue create --title "Confirm CI on GitHub after the Actions incident" --label effort:low --body "$(cat <<'EOF' …`
+- **Bash** Create follow-up issue without label: `gh issue create --title "Confirm CI on GitHub after the Actions incident" --body "$(cat <<'EOF' …`
+- **Plan** (next step)
+- **Bash** Add incident note to PR, mark ready: `gh pr view 24 --json body --jq .body > $SCRATCHPAD/body.m …`
+
+</details>
+
+## Claude
+
+**Recap:** PR #24 is ready for review and notes that it was merged during the GitHub Actions incident on the assumption that CI works. Issue #25 tracks confirming CI on GitHub.
+
+**Next step asked:** Ready to merge PR #24?
+
+**Recap:** PR #24 is ready for review and notes that it was merged during the GitHub Actions incident on the assumption that CI works. Issue #25 tracks confirming CI on GitHub.
+
+[PR #24](https://github.com/Roee-Tsur/benji-assignment/pull/24) is out of draft and ready for you to merge.
+
+- **PR note:** the description says it was merged during the GitHub Actions incident before CI had run on GitHub, and that we assumed it works because of the local checks.
+- **`docs/AI_USAGE.md`:** entry 12 records the same decision. It's pushed to the PR branch.
+- **Follow-up:** [issue #25](https://github.com/Roee-Tsur/benji-assignment/issues/25) is to confirm, once Actions recovers, that CI is green on `main` and that a deliberately stale client fails it.
+
+No `effort:low` label exists in the repo, so I created #25 without a label.
+
+<details>
+<summary>Background task finished</summary>
+
+```text
+<task-notification>
+<task-id>bahjr9yn2</task-id>
+<tool-use-id>toolu_01Jt7eb4jBEHAAUwS9achXKN</tool-use-id>
+<output-file>$SESSION_TMP/tasks/bahjr9yn2.output</output-file>
+<status>completed</status>
+<summary>Background command "Watch the CI run on the PR" completed (exit code 0)</summary>
+</task-notification>
+```
+
+</details>
+
+<details>
+<summary>2 tool calls</summary>
+
+- **Bash** Check CI watch output and run status: `tail -15 $SESSION_TMP/tasks/bahjr9yn2.output; gh run list --branch ti …`
+- **Bash** Read failed run's setup logs: `gh run view 41865369513 --log-failed 2>&1 | tail -15; gh run view 41865369513 --json jobs --jq '.jobs[]|{name,conclusion,steps:[.steps[]|{name,conclusion}]}'`
+
+</details>
+
+The first run failed, and not because of the incident: GitHub couldn't resolve `astral-sh/setup-uv@v10`. Checking which tags exist for each action.
+
+<details>
+<summary>1 tool call</summary>
+
+- **Bash** Check which action tags exist: `for r in actions/checkout:v7 astral-sh/setup-uv:v10 pnpm/action-setup:v6 actions/setup-node:v7; do repo=${r%%:*}; t=${r##*:}; gh api repos/$repo/git/ref/tags/$t …`
+
+</details>
+
+The other three tags exist. setup-uv only publishes full version tags, so I'll pin `v10.3.3`. #24 is already merged, so the fix goes on a new branch and PR.
+
+<details>
+<summary>3 tool calls</summary>
+
+- **Bash** Pin setup-uv, push branch, open fix PR: `git switch -q main && git pull -q && git switch -c fix/ci-setup-uv-tag && sed -i '' 's#astral-sh/setup-uv@v10$#astral-sh/setup-uv@v10.3.3 # setup-uv publishes n …`
+- **Bash** Pin setup-uv, push, open fix PR: `sed -i '' 's|astral-sh/setup-uv@v10$|astral-sh/setup-uv@v10.3.3 # setup-uv publishes no major-version tag|' .github/workflows/ci.yml && grep -n setup-uv .github …`
+- **Bash** Note the cause on #25, check the new run: ``gh issue comment 25 --body "The first run after #24 failed because it couldn't resolve \`astral-sh/setup-uv@v10\`: setup-uv publishes no major-version tag. That …``
+
+</details>
+
+**Recap:** CI's first GitHub run failed on a real bug: setup-uv@v10 doesn't exist as a tag. PR #26 pins v10.3.3 and its run is queued behind the Actions incident.
+
+The CI workflow did not work. Its first run on GitHub failed because of a real bug in the workflow, not the incident.
+
+- **Cause:** both jobs stopped in "Set up job" with `Unable to resolve action astral-sh/setup-uv@v10`. setup-uv publishes only full version tags like `v10.3.3`, not a `v10` tag. The tags for the other three actions do exist.
+- **Fix:** [PR #26](https://github.com/Roee-Tsur/benji-assignment/pull/26) pins `astral-sh/setup-uv@v10.3.3` in both jobs. It's open for you to merge. Its run is queued behind the incident, so it hasn't been confirmed on GitHub yet.
+- **`main` now:** with #24 merged, CI fails on every PR and every push to `main` until #26 lands.
+- **[Issue #25](https://github.com/Roee-Tsur/benji-assignment/issues/25):** I commented with the cause and linked #26. It stays open until a run is green and a stale-client commit fails it.
+
+The note in #24 and `docs/AI_USAGE.md` still says we assumed CI works. That's wrong now, and I haven't corrected it.
+
+## User
+
+can we close the ticket now?
+
+<details>
+<summary>1 tool call</summary>
+
+- **Bash** Check ticket, fix PR, and run status: `gh issue view 8 --json state --jq .state; gh issue view 25 --json state --jq .state; gh pr view 26 --json state --jq .state; gh run list --limit 6`
+
+</details>
+
+## Claude
+
+#8 is already closed: merging #24 closed it automatically. Here's where its acceptance criteria stand:
+
+- **CI green:** met. With the setup-uv fix from #26, every run since passes: #26's PR run, the merge to `main`, and #27 on both its PR and `main`.
+- **Stale client fails CI:** only proven locally, not yet on GitHub. That's the one thing keeping [#25](https://github.com/Roee-Tsur/benji-assignment/issues/25) open.
+
+To close #25, I'd open a throwaway draft PR with an edited `schema.d.ts`, link its failing run on #25, then close the PR and delete the branch. It needs a PR because CI only runs on PRs and on pushes to `main`. It takes about a minute. Want me to do it?

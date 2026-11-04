@@ -1,6 +1,6 @@
 # 4. Ticket #3: retry policy + idempotency hardening
 
-Transcript for [AI_USAGE entry](../AI_USAGE.md#4-ticket-3-retry-policy--idempotency-hardening-2026-11-04). Claude Code session “Ticket #3: Retry policy + idempotency hardening”, 2026-11-04 10:40–10:47 UTC; 1 prompt, 34 tool calls.
+Transcript for [AI_USAGE entry](../AI_USAGE.md#4-ticket-3-retry-policy--idempotency-hardening-2026-11-04). Claude Code session “Ticket #3: Retry policy + idempotency hardening”, 2026-11-04 10:40–10:48 UTC; 1 prompt, 37 tool calls.
 
 Rendered from the session export: prompts and replies are verbatim; tool calls are one line each (collapsed) and their output is left out. Text Claude Code injected (skills, review instructions, system reminders) is kept, collapsed. Local paths and the author's email are redacted.
 
@@ -298,9 +298,31 @@ Fixes are in. Updating the plan docs next.
 Checks pass. Pushing and opening the PR now.
 
 <details>
-<summary>2 tool calls</summary>
+<summary>4 tool calls</summary>
 
 - **Bash** Push branch and open PR against main: `cd ~/Documents/benji-assignment-ticket-3 && git push -q -u origin ticket/3-retry-policy-idempotency 2>&1 | tail -2; cat > $TMP …`
 - **ToolSearch** `select:mcp__ccd_pr__get_status,mcp__ccd_pr__bind_pr,mcp__ccd_session_mgmt__export_transcript`
+- **app.pr__get_status** `{}`
+- **app.session_mgmt__export_transcript** `{"session_id": "self"}`
 
 </details>
+
+**Recap:** PR #15 is open against main and stacked on #12: the retry policy plus idempotency hardening, with 107 tests passing. It needs a rebase onto main after #12 merges, and the #13 frontend client needs regenerating for the 422 schema change. Nothing is merged.
+
+I opened [PR #15](https://github.com/Roee-Tsur/benji-assignment/pull/15) against `main`. It is stacked on #12, and the body says it must be rebased onto `main` once #12 merges. `make lint typecheck test` passes with 107 tests.
+
+- **Retry policy:** a new pure module, `domain/retry_policy.py`. It does exponential backoff with full jitter and sorts outcomes: 2xx is success, 410 is `endpoint_gone`, anything else (including no response) is retried. It reads `Retry-After` only as a number of seconds, capped; dates and junk are ignored. There are two new settings, `WEBHOOK_RETRY_BASE_SECONDS` and `WEBHOOK_RETRY_CAP_SECONDS`, and bad values now stop the app at startup. It is not connected to the worker yet; that's #4.
+- **`POST /events`:**
+  - It now inserts first and catches the duplicate-key error, instead of checking before inserting.
+  - A missing or blank key returns 400.
+  - Reusing a key with a different payload returns 422. The comparison is exact JSON, so key order doesn't matter but `1`, `1.0` and `true` count as different.
+  - Over 64 KiB returns 413.
+- **Concurrency:** before the fix, the new test (10 submits with the same key at once) reproduced the 500. After it, the test passed 15 times in a row.
+
+Decisions the reviewer should check (listed in the PR):
+- The 64 KiB limit is measured on the serialized envelope, the bytes every attempt sends, not on the raw request. Checking the size before the body is parsed is listed in `docs/PLAN.md` under "With more time".
+- The 422 response schema is now `ValidationProblem | Problem`, so the generated frontend client from #13 needs regenerating once both PRs are on `main`.
+
+`/code-review` found 7 issues. I fixed 6, including the PLAN wording, and deferred the size check before parsing. `docs/PLAN.md` and `docs/AI_USAGE.md` are updated. The `AI_USAGE.md` entry has no session number, because #2's entry is still on its own branch; expect a small conflict there when they merge.
+
+The work is in the worktree `~/Documents/benji-assignment-ticket-3`. I didn't touch the main checkout or the `Makefile`. The transcript is exported to `~/Downloads/session-export-1793789278812.zip` and not committed.

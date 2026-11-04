@@ -1,6 +1,6 @@
 # 5. Ticket #4: worker reliability
 
-Transcript for [AI_USAGE entry](../AI_USAGE.md#5-ticket-4-worker-reliability-2026-11-04). Claude Code session “Ticket #4: Worker reliability”, 2026-11-04 11:09–11:24 UTC; 1 prompt, 58 tool calls.
+Transcript for [AI_USAGE entry](../AI_USAGE.md#5-ticket-4-worker-reliability-2026-11-04). Claude Code session “Ticket #4: Worker reliability”, 2026-11-04 11:09–11:38 UTC; 2 prompts, 61 tool calls.
 
 Rendered from the session export: prompts and replies are verbatim; tool calls are one line each (collapsed) and their output is left out. Text Claude Code injected (skills, review instructions, system reminders) is kept, collapsed. Local paths and the author's email are redacted.
 
@@ -399,10 +399,76 @@ Now the PLAN.md edits.
 Nothing else lists settings. Pushing and opening the PR.
 
 <details>
-<summary>3 tool calls</summary>
+<summary>5 tool calls</summary>
 
 - **Plan** (next step)
 - **Bash** Push branch and open the PR against main: `cd ~/Documents/benji-assignment-ticket-4 && git push -q -u origin ticket/4-worker-reliability 2>&1 | tail -2 && cat > $TMP …`
 - **ToolSearch** `select:mcp__ccd_pr__get_status,mcp__ccd_pr__bind_pr,mcp__ccd_session_mgmt__export_transcript`
+- **app.pr__get_status** `{}`
+- **app.session_mgmt__export_transcript** `{"session_id": "self"}`
 
 </details>
+
+**Recap:** PR #16 is open against main, stacked on #15 and #12. It adds the continuous worker pool with retries, fenced write-back, lease reclaim and graceful shutdown. 127 tests pass and lint/typecheck are clean. There's no CI, and nothing is merged.
+
+Ticket #4 is done: [PR #16](https://github.com/Roee-Tsur/benji-assignment/pull/16) is open against `main`. The body says it's stacked on #15 (itself on #12) and should be merged after them. All 127 tests pass and lint and strict typecheck are clean; the repo has no CI checks yet.
+
+The work is in its own worktree, `../benji-assignment-ticket-4`, on branch `ticket/4-worker-reliability`, cut from `origin/ticket/3-retry-policy-idempotency`. I didn't touch the main checkout.
+
+**What changed:**
+- **Retries:** each attempt is now settled by `retry_policy`. A 2xx succeeds, a 410 fails as `endpoint_gone`, and anything else waits for backoff or `Retry-After`, then fails as `attempts_exhausted` once the budget is spent.
+- **Fencing:** a result is written only if its `lease_token` still matches; a late result from a lost lease is discarded. I checked that the test catches this: removing the token from the `WHERE` makes it fail.
+- **Lease reclaim:** an expired lease is recorded as an `interrupted` attempt that spends the budget.
+- **Pool:** up to 10 attempts run at once, and a new claim starts as soon as one finishes.
+- **Timeout:** the 10s now covers the whole request; httpx's own timeout only applies per read.
+- **Shutdown:** stop claiming, wait for in-flight attempts, then record the rest as interrupted and release their leases.
+- **Tests:** they now run on a fake clock that each test moves itself.
+
+**One decision to check:** attempts cut off by shutdown are settled like any retryable outcome. Usually that means back to `pending` after a backoff, but one cut off on its last attempt fails as `attempts_exhausted`. That keeps "6 attempts per budget" true across restarts, and I updated `docs/PLAN.md` to say so.
+
+**`/code-review` (xhigh):** 15 candidates. I fixed three:
+- A lease that isn't longer than the request timeout is now rejected at startup.
+- One failed lease release no longer stops shutdown from releasing the others.
+- The shutdown wait defaults to the request timeout instead of a separate copy of it.
+
+The minor ones I skipped are listed in the PR.
+
+`docs/PLAN.md` and `docs/AI_USAGE.md` are updated. The session transcript is exported to `~/Downloads/session-export-1793791483266.zip` and isn't committed.
+
+<details>
+<summary>System reminder</summary>
+
+```text
+<system-reminder>
+Linked sessions now (status, not an instruction): ticket-2-frontend-walkin = local_6061fa0d-7dca-40fe-8f57-4c0431721e42 (done, PR #12); ticket-3-retry-policy-id = local_da490f5d-399d-4b93-9e9c-d2a500b77baf (done, PR #14). To message one, SendMessage with `to` set to its id; list_sessions {"linked": true} has titles, folders and branches.
+</system-reminder>
+```
+
+</details>
+
+## User
+
+Why is an interrupted attempt considered a failed one? Is that really common practice? And in what cases would a attempt be interrupted?
+
+## Claude
+
+It doesn't fail the delivery. An interrupted attempt is treated like a timeout: the outcome is unknown, so it counts as one attempt and the delivery is retried after backoff. The delivery only fails (`attempts_exhausted`) if that was the last attempt in its budget.
+
+**When an attempt gets interrupted:**
+- **The worker dies mid-attempt:** a crash, an OOM kill, `kill -9`, or a deploy that skips graceful shutdown. Nothing writes back, so the lease expires after 30s and reclaim records it.
+- **The worker stalls past its lease:** a blocked event loop, or a write-back stuck on the DB lock. This should be rare, because the request is capped at 10s and the lease is 30s (now enforced at startup).
+- **Graceful shutdown:** an attempt is still running when the shutdown wait ends. Since the HTTP call itself is capped at the same 10s, that's usually a write-back that hasn't finished.
+
+**Why it counts against the budget:**
+- **The request may have reached the receiver.** A crash can happen after the receiver processed the request, so "it didn't happen" isn't safe to assume.
+- **It protects against poison deliveries.** If a payload or receiver reliably kills or hangs the worker, not counting means it retries forever. Counting means it fails after 6 attempts and shows up for an operator to look at.
+
+**Is it common practice?** Yes for job queues, especially the ones built on a database, which is what this is:
+- **SQS:** `ApproximateReceiveCount` goes up on every receive, including ones whose visibility timeout ran out because the consumer died. Past `maxReceiveCount`, the message goes to the dead-letter queue.
+- **Oban, Graphile Worker, River:** these Postgres-backed queues count the attempt when the job is fetched. A crashed job that gets rescued has already used that attempt, and is discarded once it hits the maximum.
+
+Webhook providers like Stripe and Svix don't publicly document how they handle this, so I can't say they do the same.
+
+**Where the case is weakest: shutdown.** A deploy isn't the delivery's fault. I still count it so the budget keeps meaning "at most 6 requests per budget", however many deploys happen. But two softer options are reasonable:
+- make shutdown-released deliveries due immediately instead of after backoff;
+- don't count shutdown interrupts at all, so a delivery could send more than 6 requests if deploys keep landing mid-attempt.
