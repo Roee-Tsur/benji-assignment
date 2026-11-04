@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
+import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy import select, update
@@ -553,3 +554,49 @@ async def test_app_shutdown_stops_the_worker(settings: Settings) -> None:
 
     async with asyncio.timeout(2), app.router.lifespan_context(app):
         pass
+
+
+async def test_one_failed_release_does_not_stop_shutdown_releasing_the_rest(
+    app: FastAPI, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await create_endpoint(client, url=RECEIVER)
+    await create_endpoint(client, url=RECEIVER)
+    await submit_event(client)
+    receiver, gates = blocking_receiver()
+    worker = worker_with_transport(app, receiver, worker_shutdown_timeout_seconds=0.05)
+    task = asyncio.create_task(worker.run())
+    await eventually(lambda: len(gates) == 2)
+    record_attempt = deliveries_service.record_attempt
+    releases = 0
+
+    async def first_release_fails(*args: Any, **kwargs: Any) -> Any:
+        nonlocal releases
+        releases += 1
+        if releases == 1:
+            raise RuntimeError("database is locked")
+        return await record_attempt(*args, **kwargs)
+
+    monkeypatch.setattr(deliveries_service, "record_attempt", first_release_fails)
+    worker.stop()
+    async with asyncio.timeout(2):
+        await task
+
+    assert releases == 2
+    assert sorted(d["status"] for d in await list_deliveries(client)) == [
+        "in_progress",  # left for lease reclaim
+        "pending",
+    ]
+
+
+def test_settings_reject_a_lease_that_a_request_can_outlast() -> None:
+    with pytest.raises(ValueError, match="lease"):
+        Settings(
+            _env_file=None,  # pyright: ignore[reportCallIssue]
+            webhook_request_timeout_seconds=30,
+            webhook_lease_seconds=30,
+        )
+
+
+def test_shutdown_waits_as_long_as_a_request_may_take_by_default(settings: Settings) -> None:
+    slow = settings.model_copy(update={"webhook_request_timeout_seconds": 25})
+    assert slow.worker_shutdown_timeout == 25

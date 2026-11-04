@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     worker_enabled: bool = True
     worker_poll_interval_seconds: float = 0.5
     worker_concurrency: PositiveInt = 10  # attempts in flight at once
-    # Matches the request timeout: an attempt still running after that is stuck, not slow.
-    worker_shutdown_timeout_seconds: float = 10.0
+    # How long shutdown waits for in-flight attempts. Unset: as long as a request may take.
+    worker_shutdown_timeout_seconds: float | None = None
 
     webhook_request_timeout_seconds: float = 10.0
     webhook_lease_seconds: float = 30.0
@@ -31,6 +31,19 @@ class Settings(BaseSettings):
     def _check_retry_policy(self) -> Self:
         self.retry_policy  # noqa: B018  # fail at startup, not on the first submit
         return self
+
+    @model_validator(mode="after")
+    def _check_lease_outlasts_a_request(self) -> Self:
+        # Otherwise a slow attempt is reclaimed while still in flight, and sent again.
+        if self.webhook_lease_seconds <= self.webhook_request_timeout_seconds:
+            raise ValueError("webhook_lease_seconds must exceed webhook_request_timeout_seconds")
+        return self
+
+    @property
+    def worker_shutdown_timeout(self) -> float:
+        if self.worker_shutdown_timeout_seconds is None:
+            return self.webhook_request_timeout_seconds
+        return self.worker_shutdown_timeout_seconds
 
     @property
     def retry_policy(self) -> RetryPolicy:

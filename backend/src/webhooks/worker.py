@@ -109,7 +109,7 @@ class DeliveryWorker:
         if not claims:
             return
         _, unfinished = await asyncio.wait(
-            set(claims), timeout=self._settings.worker_shutdown_timeout_seconds
+            set(claims), timeout=self._settings.worker_shutdown_timeout
         )
         for task in unfinished:
             task.cancel()
@@ -119,7 +119,10 @@ class DeliveryWorker:
             result = deliveries.interrupted(
                 started_at=claimed.claimed_at, now=self._clock.now(), why="worker shut down"
             )
-            await self._record(claimed.lease, result)
+            try:
+                await self._record(claimed.lease, result)
+            except Exception:  # keep releasing the others; this lease expires and is reclaimed
+                logger.exception("could not release delivery %s", claimed.lease.delivery_id)
 
     async def _claim(self) -> ClaimedDelivery | None:
         async with self._sessions() as session:
