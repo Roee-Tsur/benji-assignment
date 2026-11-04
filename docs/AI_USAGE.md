@@ -1,6 +1,6 @@
 # AI Usage
 
-How AI was used to build this, session by session. Each entry is short: what I asked for, how I steered, and what I overrode. Full chat transcripts are added to `docs/transcripts/` after I review them.
+How AI was used to build this, session by session. Each entry is short: what I asked for, how I steered, and what I overrode. Each entry links its full chat transcript in [`docs/transcripts/`](./transcripts/), named by entry number (`01-…md` is entry 1). They are rendered from the session exports: prompts and replies verbatim, tool calls one line each, tool output left out, local paths and my email redacted. Entries 14 and 15 and the parallel research session in entry 1 have no transcript; they weren't exported.
 
 Tooling: Claude Code (Opus) in the desktop app.
 
@@ -24,6 +24,7 @@ Tooling: Claude Code (Opus) in the desktop app.
   - **Added:** URL-held filters and deep links, optimistic replay with rollback, visible "live" cues, a query key factory with ADR 0004 (no Pinia), MSW-backed component tests, an axe accessibility check, a CI check that the generated API client is current, and a dedicated UI polish ticket.
   - **Cut:** three backend refinements that don't change what the dashboard shows (per-endpoint cap, HTTP-date `Retry-After`, streaming capture).
 - **Output:** [PLAN.md](./PLAN.md), [GLOSSARY.md](../GLOSSARY.md), [ADR 0001](./adr/0001-database-as-delivery-queue.md), [ADR 0002](./adr/0002-standard-webhooks-signing.md), [ADR 0003](./adr/0003-disable-fails-pending-deliveries.md), [ADR 0004](./adr/0004-server-state-in-vue-query.md).
+- **Transcript:** [01-design-interview.md](./transcripts/01-design-interview.md)
 
 ### 2. Ticket #1: backend walking skeleton (2026-11-04)
 
@@ -32,6 +33,7 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Checks beyond the tests:** it mutation-tested the "no transaction held during the HTTP call" test, confirming the test fails when the claim's transaction is left open, and ran the acceptance flow by hand with curl against `make dev-backend`.
 - **Review:** `/code-review` found 9 issues. It fixed 7: request errors other than transport errors left a delivery stuck `in progress`, problem responses dropped the `Allow` header, and 5 smaller cleanups. It skipped 2 that belong to later tickets: shutdown mid-attempt (#4) and the concurrent same-key race (#3).
 - **Output:** `backend/` (47 pytest tests, ruff, strict pyright) and root `Makefile` targets.
+- **Transcript:** [02-ticket-1-backend-skeleton.md](./transcripts/02-ticket-1-backend-skeleton.md)
 
 ### 3. Ticket #2: frontend walking skeleton (2026-11-04)
 
@@ -44,7 +46,7 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Review:** `/code-review` found 8 issues, and it fixed all of them. The main ones: `mutateAsync` rejections went unhandled, a create that resolved after its modal closed could bring back the secret, one failed poll hid the loaded rows, and the generated schema depended on the local backend `.env`.
 - **Where I steered:** coming from frameworks with a separate view model, I asked whether component logic like `submit`, `validate`, and `copySecret` should move out of the view. The AI's answer was that Vue's equivalent is a composable, and one-view glue stays in the component. Only reused or pure, testable logic moves out. I had it apply that rule: VueUse `useClipboard` replaced the hand-written copy, and JSON parsing moved to `app/domain/` with tests. I also had the rule recorded in `CLAUDE.md` for later tickets.
 - **Output:** `frontend/` (23 Vitest tests in Node and Nuxt projects, ESLint, `vue-tsc` over app and tests), `make dev` plus frontend coverage in `make lint` / `typecheck` / `test`.
-
+- **Transcript:** [03-ticket-2-frontend-skeleton.md](./transcripts/03-ticket-2-frontend-skeleton.md)
 
 ### 4. Ticket #3: retry policy + idempotency hardening (2026-11-04)
 
@@ -53,6 +55,7 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Choices it made and flagged in the PR:** the 64 KiB limit measures the serialized envelope (what receivers get), a missing key is a 400 by declaring the header optional and checking it in the router, and `RetryPolicy` owns the attempt budget's size.
 - **Review:** `/code-review` found 7 issues. It fixed 5: `True == 1 == 1.0` let different payloads dedupe, bad retry settings failed per request instead of at startup, blank keys were accepted, other integrity errors were masked, and an odd `Retry-After` sentinel. It recorded the request-size guard under "With more time" and the PLAN wording under docs.
 - **Output:** `domain/retry_policy.py`, hardened `POST /events`, 107 pytest tests.
+- **Transcript:** [04-ticket-3-retry-idempotency.md](./transcripts/04-ticket-3-retry-idempotency.md)
 
 ### 5. Ticket #4: worker reliability (2026-11-04)
 
@@ -61,6 +64,7 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Choices it made and flagged in the PR:** interrupted attempts (reclaimed or cut off by shutdown) go through the same settle rule as any retryable outcome, so the budget's "at most 6" holds even across restarts. The request timeout now bounds the whole request, because httpx's is per read.
 - **Review:** `/code-review` (xhigh) found 15 candidates. It fixed 3: a lease no longer than the request timeout is now rejected at startup, one failed release no longer stops shutdown releasing the rest, and the shutdown wait defaults to the request timeout instead of a copy of it. It documented the shutdown settle rule in the plan and skipped the minor ones, listed in the PR.
 - **Output:** a continuous worker pool with fenced write-back, lease reclaim, and graceful shutdown; 127 pytest tests.
+- **Transcript:** [05-ticket-4-worker-reliability.md](./transcripts/05-ticket-4-worker-reliability.md)
 
 ### 6. Ticket #5: replay + disable (2026-11-04)
 
@@ -69,6 +73,7 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Choices it made and flagged in the PR:** a pending delivery the claim finds on a disabled endpoint is failed, not skipped, so it can't sit `pending` forever. An in-flight attempt that would retry on a just-disabled endpoint fails with `endpoint_disabled` (the ADR's "dashboard misreports" reason applies). `flaky` counts requests per `webhook-id` on the receiver side, in memory, rather than reading the sender's attempt count.
 - **Review:** `/code-review` (high) found 4 candidates. It fixed 1: the mock receiver held a pooled DB connection while `slow` slept. It skipped the minor ones, listed in the PR.
 - **Output:** `POST /deliveries/{id}/replay`, `POST /endpoints/{id}/replay-failed`, disable per ADR 0003, `/mock/fail|flaky|slow`; 148 pytest tests.
+- **Transcript:** [06-ticket-5-replay-disable.md](./transcripts/06-ticket-5-replay-disable.md)
 
 ### 7. Ticket #7: Endpoints + Events views (2026-11-04)
 
@@ -78,6 +83,7 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Choices it made and flagged in the PR:** the key is tied to the parsed type and data, so "Format" keeps it. The key is editable, which is how the 422 can be reached. A reused-key 422 shows inline instead of as a toast, through a `meta.toastError` hook on the shared mutation cache.
 - **Review:** `/code-review` (high) found 7 issues. It fixed 6: `crypto.randomUUID` crashing on non-HTTPS hosts, two accessible-name mismatches, a missing events index, duplicated event schemas, and a misnamed composable file. The drill-down filter waits on #6.
 - **Output:** Endpoints view (inline URL validation, enable toggle, replay failed), Events view (trigger form plus recent events), `GET /events`; 150 pytest tests and 42 Vitest tests.
+- **Transcript:** [07-ticket-7-endpoints-events-views.md](./transcripts/07-ticket-7-endpoints-events-views.md)
 
 ### 8. Ticket #6: deliveries view (2026-11-04)
 
@@ -87,6 +93,7 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Checks beyond the tests:** in the browser, against `/mock/slow?s=3` and `/mock/flaky?n=2`, it sampled the DOM while deliveries ran. Rows went pending → in progress → succeeded with highlights, the countdown ticked, the open slideover's attempt log grew 0 → 2 → 3, a page-2 row updated after "load more", deep links survived a reload, a replay against a disabled endpoint rolled back with the 409 toast, and stopping the backend showed "Updates failing" and then recovered on its own.
 - **Review:** `/code-review` (high) found 8 issues, and it fixed all of them. The main ones: a failed delivery's open detail stopped polling, so it went stale after a replay from elsewhere; a closed slideover kept polling; rollback restored the whole list snapshot; and a 1s clock re-rendered the whole table.
 - **Output:** filtered, paged, counted `GET /deliveries`; the deliveries view (URL filters, status chips, live indicator, highlights, countdowns, load more, slideover, optimistic replay); 155 pytest and 47 Vitest tests.
+- **Transcript:** [08-ticket-6-deliveries-view.md](./transcripts/08-ticket-6-deliveries-view.md)
 
 ### 9. Ticket #11: UI polish pass (2026-11-04)
 
@@ -96,18 +103,21 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Review:** `/code-review` (high) found 9 issues and it fixed 8. The main ones: the load error outlived a filter change, the slideover still had the flicker, an empty placeholder page flashed "no matches", and Retry stayed disabled while polls ran. It skipped the mock-receiver hint that shows even with the receiver off.
 - **Caught along the way:** the Nuxt test environment timed out on setup while `make dev` was running beside it, so it stopped the dev server for the test runs instead of raising timeouts.
 - **Output:** designed loading, empty, and error states on every view, consistent formatting, 21 before/after screenshots in `docs/screenshots/`; 157 pytest and 94 Vitest tests.
+- **Transcript:** [09-ticket-11-ui-polish.md](./transcripts/09-ticket-11-ui-polish.md)
 
 ### 10. Cutting Playwright e2e (2026-11-04)
 
 - **Asked:** on a tight schedule, take Playwright off the plan and the tickets and move it to "With more time", while keeping the CI ticket.
 - **Where I steered:** the AI asked two questions before editing. The axe checks only ran through Playwright, so I chose to defer them with it rather than move them into Vitest. I had the change go on its own branch off `main`, not on the in-progress endpoint branch.
 - **Output:** PLAN.md without Playwright (Approach, Tests, traceability, build order) and a "With more time" entry for it; ticket #8 rescoped to CI only, and #9's README scope updated.
+- **Transcript:** [10-cut-playwright.md](./transcripts/10-cut-playwright.md)
 
 ### 11. "Replay failed" only when there is something to replay (2026-11-04)
 
 - **Asked:** a UX question: does "Replay failed" make sense on an endpoint with no failed deliveries? The AI said no. The button looked actionable and the zero case only surfaced as a toast after the click. It checked the API and found the view couldn't tell (no count on `EndpointOut`), then laid out three options and recommended adding the count.
 - **Where I steered:** I picked that option and asked for it on top of the freshly merged UX fixes on `main`, rather than on the stale ticket branch the checkout was on.
 - **Output:** `GET /endpoints` returns `failed_count` (a subquery, in the same pattern as the events' `delivery_count`); the button reads "Replay 3 failed", is disabled at zero with a tooltip, and the list polls every 5s and refetches after a replay. One pytest test and one page test were added.
+- **Transcript:** [11-replay-failed-button.md](./transcripts/11-replay-failed-button.md)
 
 ### 12. Ticket #8: CI (2026-11-04)
 
@@ -117,6 +127,7 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Review:** `/code-review` (low) found nothing.
 - **Merged during the GitHub Actions incident:** I chose to merge on the local proof and assume the workflow works, rather than wait. Confirming it on GitHub (a green run, and a stale commit that fails) is a follow-up.
 - **Output:** `.github/workflows/ci.yml`, merged before its first run on GitHub.
+- **Transcript:** [12-ticket-8-ci.md](./transcripts/12-ticket-8-ci.md)
 
 ### 13. Ticket #9: final docs pass (2026-11-04)
 
@@ -132,6 +143,7 @@ Tooling: Claude Code (Opus) in the desktop app.
   It fixed the docs, plus one UI string that said "Retry" where the glossary says "Replay". For the GIF, it recorded the dashboard with Playwright from a scratch script, so Playwright stayed out of the repo. It ran the app from a throwaway clone on separate ports, so my own dev servers kept running.
 - **Checks:** from a fresh clone, following only the README: install, `make lint typecheck test` (158 pytest and 101 Vitest tests), and the app running with the fast retry settings.
 - **Output:** [README.md](../README.md), [live-deliveries.gif](./screenshots/live-deliveries.gif), and PLAN.md checked against the code, with the traceability links filled in.
+- **Transcript:** [13-ticket-9-final-docs.md](./transcripts/13-ticket-9-final-docs.md)
 
 ### 14. Cursor support (2026-11-04)
 
@@ -156,3 +168,11 @@ Tooling: Claude Code (Opus) in the desktop app.
   - It ran the README demo in the browser from a throwaway clone on separate ports, leaving my running dev servers alone.
   - The demo turned up the main finding: the idempotency key resets when you leave the Events page, so the README's dedup step creates a new event.
 - **Output:** a verdict with evidence for every requirement, posted on #10 (all met; AI usage note partial until transcripts land). 13 issues filed (#29–#41): 1 high, 4 medium, 8 low.
+- **Transcript:** [16-ticket-10-pre-submit-review.md](./transcripts/16-ticket-10-pre-submit-review.md)
+
+### 17. Ticket #33: session transcripts (2026-11-04)
+
+- **Asked:** run `/work-ticket 33` from the review session: add the exported session transcripts to `docs/transcripts/` and link them from this file.
+- **Where I steered:** the AI mapped the 14 exports to entries and listed what wasn't exported, then asked about scope, format, and redaction before writing anything. I picked all 14 now and the rest later, readable Markdown with tool calls collapsed rather than raw JSONL, and subagent reports only as they appear in the parent session. For redaction I chose local paths and my email, and kept the injected skill and review text and the local demo `whsec_` secret as they were. I approved two sample files before the full set went in.
+- **Process:** a scratch script (kept out of the repo) renders each export: prompts, answers to its questions, and replies verbatim, each tool call one line, tool output and screenshots dropped. It found mid-turn messages and subagent reports that the plain transcript records miss. A scan before and after rendering found no tokens and no leftover paths or email. `main` moved while this ran, so the review transcript became entry 16.
+- **Output:** 14 transcripts (340 KB) in [docs/transcripts/](./transcripts/), each linked from its entry.
