@@ -38,7 +38,7 @@ async def submit_event(
     event_id = new_id("evt")
     event = Event(
         id=event_id,
-        type=str(event_type),
+        type=event_type,
         idempotency_key=idempotency_key,
         data=data,
         envelope=serialize_envelope(event_id, event_type, now, data),

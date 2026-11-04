@@ -8,7 +8,7 @@ from sqlalchemy import JSON, Enum, ForeignKey, Index, LargeBinary, UniqueConstra
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from webhooks.db import Base
-from webhooks.domain.enums import AttemptOutcome, DeliveryStatus, FailureReason
+from webhooks.domain.enums import AttemptOutcome, DeliveryStatus, EventType, FailureReason
 
 
 def _values(enum: type[StrEnum]) -> list[str]:
@@ -41,7 +41,7 @@ class Event(Base):
     __tablename__ = "events"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    type: Mapped[str]
+    type: Mapped[EventType] = mapped_column(_enum(EventType))
     idempotency_key: Mapped[str] = mapped_column(unique=True)
     data: Mapped[dict[str, Any]] = mapped_column(JSON)
     # The serialized envelope: every attempt sends (and signs) exactly these bytes.

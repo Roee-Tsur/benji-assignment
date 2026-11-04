@@ -58,7 +58,7 @@ class EventSubmitted(BaseModel):
     def from_model(cls, event: Event, *, delivery_count: int, deduplicated: bool) -> Self:
         return cls(
             id=event.id,
-            type=EventType(event.type),
+            type=event.type,
             data=event.data,
             idempotency_key=event.idempotency_key,
             created_at=event.created_at,
@@ -87,7 +87,7 @@ class DeliveryOut(BaseModel):
         return cls(
             id=delivery.id,
             event_id=delivery.event_id,
-            event_type=EventType(delivery.event.type),
+            event_type=delivery.event.type,
             endpoint_id=delivery.endpoint_id,
             endpoint_url=delivery.endpoint.url,
             status=delivery.status,

@@ -2,8 +2,12 @@ import json
 from datetime import datetime
 from typing import Any
 
+from webhooks.domain.enums import EventType
 
-def serialize_envelope(event_id: str, event_type: str, timestamp: datetime, data: Any) -> bytes:
+
+def serialize_envelope(
+    event_id: str, event_type: EventType, timestamp: datetime, data: Any
+) -> bytes:
     """The bytes every attempt sends and signs. Serialized once, at submit time."""
     envelope = {
         "id": event_id,
