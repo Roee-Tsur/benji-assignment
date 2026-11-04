@@ -1,13 +1,24 @@
 import { HttpResponse } from 'msw'
-import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { ApiError } from '../../app/api/errors'
-import { delivery, endpoint } from '../msw/fixtures'
+import { queryKeys } from '../../app/api/queryKeys'
+import { endpoint } from '../msw/fixtures'
 import { http } from '../msw/http'
 import { useMockApi } from '../msw/server'
 import { clearQueryCache, withSetup } from './helpers'
 
 const server = useMockApi()
 afterEach(clearQueryCache)
+
+/**
+ * Records the query keys a mutation invalidates. Asserting on keys, not on refetched deliveries,
+ * keeps these tests independent of the deliveries list's shape (owned by the deliveries view).
+ */
+function spyOnInvalidation() {
+  const spy = vi.spyOn(useNuxtApp().$queryClient, 'invalidateQueries')
+  onTestFinished(() => spy.mockRestore())
+  return () => spy.mock.calls.map(([filters]) => (typeof filters === 'function' ? filters() : filters)?.queryKey)
+}
 
 describe('useEndpoints', () => {
   it('loads endpoints through the API layer', async () => {
@@ -56,23 +67,14 @@ describe('useCreateEndpoint', () => {
 })
 
 describe('useSetEndpointEnabled', () => {
-  it('refetches deliveries after disabling, so the pending ones show as failed', async () => {
-    let disabled = false
-    server.use(
-      http.patch('/endpoints/{endpoint_id}', async ({ request, response }) => {
-        disabled = !(await request.json()).enabled
-        return response(200).json({ ...endpoint, enabled: !disabled })
-      }),
-      http.get('/deliveries', ({ response }) => response(200).json([
-        delivery(disabled ? { status: 'failed', failure_reason: 'endpoint_disabled' } : { status: 'pending' })
-      ]))
-    )
-    const { deliveries, setEnabled } = await withSetup(() => ({ deliveries: useDeliveries(), setEnabled: useSetEndpointEnabled() }))
-    await expect.poll(() => deliveries.data.value?.[0]?.status).toBe('pending')
+  it('invalidates deliveries after disabling, so the pending ones show as failed', async () => {
+    server.use(http.patch('/endpoints/{endpoint_id}', ({ response }) => response(200).json({ ...endpoint, enabled: false })))
+    const invalidated = spyOnInvalidation()
+    const setEnabled = await withSetup(() => useSetEndpointEnabled())
 
     await setEnabled.mutateAsync({ endpointId: endpoint.id, enabled: false })
 
-    await expect.poll(() => deliveries.data.value?.[0]?.status).toBe('failed')
+    expect(invalidated()).toEqual(expect.arrayContaining([queryKeys.endpoints.all, queryKeys.deliveries.all]))
   })
 
   it('reports which endpoint has a request in flight', async () => {
@@ -95,21 +97,13 @@ describe('useSetEndpointEnabled', () => {
 })
 
 describe('useReplayFailed', () => {
-  it('resolves to the replayed count and refetches deliveries', async () => {
-    let deliveryRequests = 0
-    server.use(
-      http.post('/endpoints/{endpoint_id}/replay-failed', ({ response }) => response(200).json({ replayed: 3 })),
-      http.get('/deliveries', ({ response }) => {
-        deliveryRequests++
-        return response(200).json([delivery()])
-      })
-    )
-    const { deliveries, replayFailed } = await withSetup(() => ({ deliveries: useDeliveries(), replayFailed: useReplayFailed() }))
-    await expect.poll(() => deliveries.data.value).toBeDefined()
-    const before = deliveryRequests
+  it('resolves to the replayed count and invalidates deliveries', async () => {
+    server.use(http.post('/endpoints/{endpoint_id}/replay-failed', ({ response }) => response(200).json({ replayed: 3 })))
+    const invalidated = spyOnInvalidation()
+    const replayFailed = await withSetup(() => useReplayFailed())
 
     await expect(replayFailed.mutateAsync({ endpointId: endpoint.id })).resolves.toEqual({ replayed: 3 })
 
-    await expect.poll(() => deliveryRequests).toBeGreaterThan(before)
+    expect(invalidated()).toContainEqual(queryKeys.deliveries.all)
   })
 })
