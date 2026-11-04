@@ -139,6 +139,8 @@ Planned now; file and test links get filled in during the final docs-vs-code pas
 
 ## Build order and cut line
 
+The work is tracked as GitHub issues #1–#10, one session and PR each, run with the `work-ticket` skill. Each ticket states its dependencies and a suggested effort level.
+
 1. **Thin vertical slice:** create endpoint → trigger → worker → mock receiver → `succeeded` visible in a minimal dashboard.
 2. **Deepen the backend:** retries, leases and fencing, replay, disable, shutdown, plus the pytest suite.
 3. **Deepen the dashboard:** deliveries table, filters, attempt log, retry countdown, async UX.
