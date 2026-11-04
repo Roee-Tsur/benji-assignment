@@ -27,7 +27,10 @@ async def list_endpoints(session: SessionDep) -> list[EndpointOut]:
 
 @router.patch("/{endpoint_id}", responses=problem_responses(404, 422))
 async def update_endpoint(
-    endpoint_id: str, body: EndpointUpdate, session: SessionDep
+    endpoint_id: str, body: EndpointUpdate, session: SessionDep, runtime: RuntimeDep
 ) -> EndpointOut:
-    endpoint = await endpoints.set_enabled(session, endpoint_id, enabled=body.enabled)
+    """Disabling fails the endpoint's pending deliveries; enabling again delivers nothing."""
+    endpoint = await endpoints.set_enabled(
+        session, endpoint_id, enabled=body.enabled, now=runtime.clock.now()
+    )
     return EndpointOut.model_validate(endpoint)
