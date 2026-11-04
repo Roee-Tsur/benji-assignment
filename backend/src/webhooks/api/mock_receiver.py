@@ -64,6 +64,7 @@ async def _verify(request: Request, session: SessionDep, runtime: RuntimeDep) ->
     """Returns the verified `webhook-id`."""
     webhook_id = request.headers.get("webhook-id")
     secret = webhook_id and await deliveries.get_signing_secret(session, webhook_id)
+    await session.close()  # gives the connection back, so `slow` doesn't hold one while it waits
     if not webhook_id or not secret:
         raise HTTPException(401, "missing or unknown webhook-id")
     try:
