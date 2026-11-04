@@ -28,7 +28,7 @@ One session works one ticket. The argument is the GitHub issue number. If none w
 
 ## 4. Verify
 
-- Run every check that applies: `make lint`, `make typecheck`, `make test` (and e2e once it exists). All must pass. If a check can't run, say so plainly.
+- Run every check that applies: `make lint`, `make typecheck`, `make test`. All must pass. If a check can't run, say so plainly.
 - Check each acceptance criterion and note how you verified it. For UI tickets, also look at the running app in the browser.
 - Run `/code-review` on the branch and fix what it confirms.
 
