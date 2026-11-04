@@ -155,7 +155,7 @@ Planned now; file and test links get filled in during the final docs-vs-code pas
 | Live delivery view | Polling all loaded pages + detail | Vitest: polling backs off when terminal and resumes, every loaded page refreshes, detail polling ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)), countdown and highlights ([deliveryProgress.test.ts](../frontend/test/unit/deliveryProgress.test.ts)) |
 | Attempt inspection, replay | Delivery slideover, optimistic replay | Vitest: optimistic replay and rollback ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)) |
 | Async UX, consistent errors | Vue Query composables, `ApiError`, `useLoadError` | Vitest `ApiError` ([api-errors.test.ts](../frontend/test/unit/api-errors.test.ts), [endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)), trigger form incl. the zero fan-out notice ([triggerEventForm.test.ts](../frontend/test/nuxt/triggerEventForm.test.ts)), a failed load's error surviving retries and key changes ([useLoadError.test.ts](../frontend/test/nuxt/useLoadError.test.ts)), time and count formatting ([format.test.ts](../frontend/test/unit/format.test.ts)); before/after screenshots ([docs/screenshots](./screenshots/)) |
-| API / state / UI separation | `api/`, `composables/`, components | Code layout; ESLint layering rule ([eslint.config.mjs](../frontend/eslint.config.mjs)) |
+| API / state / UI separation | `api/`, `composables/`, components | Code layout; ESLint layering rule ([eslint.config.mjs](../frontend/eslint.config.mjs)); generated client checked against the backend schema in CI ([ci.yml](../.github/workflows/ci.yml)) |
 
 ## Build order and cut line
 

@@ -108,3 +108,12 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Asked:** a UX question: does "Replay failed" make sense on an endpoint with no failed deliveries? The AI said no. The button looked actionable and the zero case only surfaced as a toast after the click. It checked the API and found the view couldn't tell (no count on `EndpointOut`), then laid out three options and recommended adding the count.
 - **Steered:** the user picked that option and asked for it on top of the freshly merged UX fixes on `main`, rather than on the stale ticket branch the checkout was on.
 - **Output:** `GET /endpoints` returns `failed_count` (a subquery, in the same pattern as the events' `delivery_count`); the button reads "Replay 3 failed", is disabled at zero with a tooltip, and the list polls every 5s and refetches after a replay. One pytest test and one page test were added.
+
+### 12. Ticket #8: CI (2026-11-04)
+
+- **Asked:** run `/work-ticket 8`: one GitHub Actions workflow for lint, typecheck, pytest, Vitest, and the stale-API-client check.
+- **Process:** two jobs (backend, frontend). The frontend job also installs uv, because `pnpm gen:api --check` reads the schema from the FastAPI app. All checks passed locally, and the stale check was proven locally by appending to `schema.d.ts` (exit 1) and restoring it (exit 0).
+- **Steered:** a GitHub Actions outage left the first run queued. The AI suggested finishing on local proof and keeping the PR a draft until a real run is green and a deliberately stale commit fails, and I agreed rather than block on GitHub.
+- **Review:** `/code-review` (low) found nothing.
+- **Merged during the GitHub Actions incident:** I chose to merge on the local proof and assume the workflow works, rather than wait. Confirming it on GitHub (a green run, and a stale commit that fails) is a follow-up.
+- **Output:** `.github/workflows/ci.yml`, merged before its first run on GitHub.
