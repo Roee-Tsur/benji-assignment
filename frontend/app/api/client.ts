@@ -8,6 +8,9 @@ export type EventType = Schemas['EventType']
 export type EventSubmitted = Schemas['EventSubmitted']
 export type Delivery = Schemas['DeliveryOut']
 export type DeliveryStatus = Schemas['DeliveryStatus']
+export type DeliveryDetail = Schemas['DeliveryDetail']
+export type Attempt = Schemas['AttemptOut']
+export type FailureReason = Schemas['FailureReason']
 
 /** Typed client for the backend, reached through the `/api` proxy (see `nuxt.config.ts`). */
 export const api = createClient<paths>({
