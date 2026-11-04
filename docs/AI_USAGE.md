@@ -96,3 +96,9 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Review:** `/code-review` (high) found 9 issues and it fixed 8. The main ones: the load error outlived a filter change, the slideover still had the flicker, an empty placeholder page flashed "no matches", and Retry stayed disabled while polls ran. It skipped the mock-receiver hint that shows even with the receiver off.
 - **Caught along the way:** the Nuxt test environment timed out on setup while `make dev` was running beside it, so it stopped the dev server for the test runs instead of raising timeouts.
 - **Output:** designed loading, empty, and error states on every view, consistent formatting, 21 before/after screenshots in `docs/screenshots/`; 157 pytest and 94 Vitest tests.
+
+### 10. "Replay failed" only when there is something to replay (2026-11-04)
+
+- **Asked:** a UX question: does "Replay failed" make sense on an endpoint with no failed deliveries? The AI said no. The button looked actionable and the zero case only surfaced as a toast after the click. It checked the API and found the view couldn't tell (no count on `EndpointOut`), then laid out three options and recommended adding the count.
+- **Steered:** the user picked that option and asked for it on top of the freshly merged UX fixes on `main`, rather than on the stale ticket branch the checkout was on.
+- **Output:** `GET /endpoints` returns `failed_count` (a subquery, in the same pattern as the events' `delivery_count`); the button reads "Replay 3 failed", is disabled at zero with a tooltip, and the list polls every 5s and refetches after a replay. One pytest test and one page test were added.
