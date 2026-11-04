@@ -4,6 +4,7 @@ from datetime import timedelta
 import pytest
 
 from webhooks.domain.retry_policy import RetryPolicy, Verdict, classify, parse_retry_after
+from webhooks.settings import Settings
 
 POLICY = RetryPolicy(max_attempts=6, base_seconds=2, cap_seconds=300)
 
@@ -75,6 +76,8 @@ def test_classifies_outcomes(response_status: int | None, verdict: Verdict) -> N
         ("1.5", None),
         ("abc", None),
         ("٣", None),  # a non-ASCII digit
+        ("9" * 10, None),  # absurdly long, and never near int()'s digit limit
+        ("9" * 5000, None),
         ("Wed, 21 Oct 2026 07:28:00 GMT", None),  # HTTP-date form is ignored
     ],
 )
@@ -88,8 +91,7 @@ def test_parses_retry_after_delta_seconds_only(header: str | None, seconds: int 
         ("45", 45),
         ("300", 300),
         ("301", 300),  # clamped to the cap
-        ("99999999999999999999999", 300),
-        ("9" * 5000, 300),  # past int()'s digit limit
+        ("999999999", 300),
     ],
 )
 def test_retry_delay_honors_retry_after_clamped_to_the_cap(header: str, delay: float) -> None:
@@ -105,3 +107,12 @@ def test_retry_delay_falls_back_to_backoff(header: str | None) -> None:
 def test_rejects_nonsensical_policies(base: float, cap: float, max_attempts: int) -> None:
     with pytest.raises(ValueError, match="retry policy"):
         RetryPolicy(max_attempts=max_attempts, base_seconds=base, cap_seconds=cap)
+
+
+def test_settings_reject_a_nonsensical_policy_at_startup() -> None:
+    with pytest.raises(ValueError, match="retry policy"):
+        Settings(
+            _env_file=None,  # pyright: ignore[reportCallIssue]
+            webhook_retry_base_seconds=10,
+            webhook_retry_cap_seconds=5,
+        )

@@ -87,7 +87,7 @@ async def test_rejects_unknown_event_types(client: AsyncClient) -> None:
 
 
 async def test_requires_an_idempotency_key(client: AsyncClient) -> None:
-    for headers in ({}, {"Idempotency-Key": ""}):
+    for headers in ({}, {"Idempotency-Key": ""}, {"Idempotency-Key": "  "}):
         response = await client.post(
             "/events", json={"type": "campaign_updated", "data": {}}, headers=headers
         )
@@ -113,6 +113,8 @@ async def test_same_key_same_payload_in_any_key_order_is_deduplicated(
     [
         {"type": "reward_transaction_created", "data": {"points": 11}},
         {"type": "campaign_updated", "data": {"points": 10}},
+        {"type": "reward_transaction_created", "data": {"points": 10.0}},
+        {"type": "reward_transaction_created", "data": {"points": True}},
     ],
 )
 async def test_same_key_different_payload_is_422(

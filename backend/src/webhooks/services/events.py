@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -54,7 +55,12 @@ async def submit_event(
         await session.flush()  # the INSERT takes the write lock before fan-out reads endpoints
     except IntegrityError:
         await session.rollback()
-        return await _resubmitted(session, idempotency_key, event_type, data)
+        original = await session.scalar(
+            select(Event).where(Event.idempotency_key == idempotency_key)
+        )
+        if original is None:
+            raise  # some other constraint failed
+        return await _resubmitted(session, original, event_type, data)
 
     enabled = await session.scalars(select(Endpoint).where(Endpoint.enabled.is_(True)))
     deliveries = [
@@ -78,14 +84,16 @@ async def submit_event(
 
 
 async def _resubmitted(
-    session: AsyncSession, idempotency_key: str, event_type: EventType, data: dict[str, Any]
+    session: AsyncSession, original: Event, event_type: EventType, data: dict[str, Any]
 ) -> SubmittedEvent:
-    original = (
-        await session.scalars(select(Event).where(Event.idempotency_key == idempotency_key))
-    ).one()
-    if original.type != event_type or original.data != data:
-        raise IdempotencyKeyReusedError(idempotency_key)
+    if original.type != event_type or _canonical(original.data) != _canonical(data):
+        raise IdempotencyKeyReusedError(original.idempotency_key)
     return SubmittedEvent(original, await _delivery_count(session, original.id), True)
+
+
+def _canonical(data: dict[str, Any]) -> str:
+    """Key order doesn't matter; JSON types do (Python's `True == 1 == 1.0` would hide them)."""
+    return json.dumps(data, sort_keys=True, separators=(",", ":"))
 
 
 async def _delivery_count(session: AsyncSession, event_id: str) -> int:

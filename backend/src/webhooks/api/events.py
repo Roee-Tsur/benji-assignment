@@ -41,7 +41,7 @@ async def submit_event(
         ),
     ] = None,
 ) -> EventSubmitted:
-    if not idempotency_key:
+    if not idempotency_key or not idempotency_key.strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "The Idempotency-Key header is required.")
     submitted = await events.submit_event(
         session,

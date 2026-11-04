@@ -10,9 +10,8 @@ from typing import Literal
 type Verdict = Literal["success", "retryable", "endpoint_gone"]
 type Uniform = Callable[[float, float], float]
 
-_DELTA_SECONDS = re.compile(r"[0-9]+")
-# Longer values saturate here rather than hit `int()`'s digit limit; any cap is far below it.
-_MAX_RETRY_AFTER_DIGITS = 18
+# Bounded so `int()` never meets its digit limit; nine digits is ~31 years, past any cap.
+_DELTA_SECONDS = re.compile(r"[0-9]{1,9}")
 # 2**62 seconds is far past any cap, and keeps the float math from overflowing.
 _MAX_EXPONENT = 62
 
@@ -58,10 +57,8 @@ def classify(response_status: int | None) -> Verdict:
 
 
 def parse_retry_after(header: str | None) -> int | None:
-    """Seconds from the delta-seconds form. The HTTP-date form and anything malformed: `None`."""
+    """Seconds from the delta-seconds form; the HTTP-date form, junk, and absurd lengths: `None`."""
     if header is None:
         return None
     value = header.strip()
-    if not _DELTA_SECONDS.fullmatch(value):
-        return None
-    return int(value) if len(value) <= _MAX_RETRY_AFTER_DIGITS else 10**_MAX_RETRY_AFTER_DIGITS
+    return int(value) if _DELTA_SECONDS.fullmatch(value) else None
