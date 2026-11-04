@@ -1,3 +1,12 @@
+import type { DeliveryStatus } from './client'
+
+/** What the deliveries list is narrowed to; an absent field means any. */
+export interface DeliveryFilters {
+  status?: DeliveryStatus
+  endpointId?: string
+  eventId?: string
+}
+
 /**
  * Every Vue Query key, built here so invalidation can target a whole feature
  * (`queryKeys.deliveries.all`) or one entry of it.
@@ -9,7 +18,10 @@ export const queryKeys = {
   },
   deliveries: {
     all: ['deliveries'] as const,
-    list: () => [...queryKeys.deliveries.all, 'list'] as const,
-    detail: (deliveryId: string) => [...queryKeys.deliveries.all, 'detail', deliveryId] as const
+    lists: () => [...queryKeys.deliveries.all, 'list'] as const,
+    list: (filters: DeliveryFilters) => [...queryKeys.deliveries.lists(), filters] as const,
+    counts: (filters: DeliveryFilters) => [...queryKeys.deliveries.all, 'counts', filters] as const,
+    details: () => [...queryKeys.deliveries.all, 'detail'] as const,
+    detail: (deliveryId: string) => [...queryKeys.deliveries.details(), deliveryId] as const
   }
 }

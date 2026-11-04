@@ -1,6 +1,6 @@
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll } from 'vitest'
-import { delivery, endpoint } from './fixtures'
+import { delivery, deliveryDetail, endpoint } from './fixtures'
 import { http } from './http'
 
 /**
@@ -12,7 +12,9 @@ import { http } from './http'
 export function useMockApi() {
   const server = setupServer(
     http.get('/endpoints', ({ response }) => response(200).json([endpoint])),
-    http.get('/deliveries', ({ response }) => response(200).json([delivery()]))
+    http.get('/deliveries', ({ response }) => response(200).json({ items: [delivery()], next_cursor: null })),
+    http.get('/deliveries/counts', ({ response }) => response(200).json({ pending: 0, in_progress: 0, succeeded: 1, failed: 0 })),
+    http.get('/deliveries/{delivery_id}', ({ response }) => response(200).json(deliveryDetail()))
   )
   beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
   afterEach(() => server.resetHandlers())
