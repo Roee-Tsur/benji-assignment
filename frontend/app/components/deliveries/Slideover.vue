@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { deliveryProgress } from '~/domain/deliveryProgress'
 import { eventTypes } from '~/domain/eventTypes'
+import { formatDateTime } from '~/domain/format'
 
 /** The delivery to show; `undefined` closes the slideover. */
 const deliveryId = defineModel<string | undefined>('deliveryId')
@@ -30,8 +31,13 @@ const now = useClock()
     v-model:open="open"
     :title="`Delivery ${shownId ?? ''}`"
     description="Payload and attempt log; updates live until the delivery is final."
-    :ui="{ content: 'max-w-2xl' }"
+    :ui="{ content: 'max-w-2xl', title: 'pe-8' }"
   >
+    <!-- A full id is long: it wraps under the heading rather than running into the close button. -->
+    <template #title>
+      Delivery <span class="font-mono text-sm font-normal break-all text-muted">{{ shownId }}</span>
+    </template>
+
     <template #body>
       <QueryError
         v-if="detail.error.value && !detail.data.value"
@@ -82,24 +88,21 @@ const now = useClock()
             Created
           </dt>
           <dd>
-            <NuxtTime
-              :datetime="detail.data.value.created_at"
-              date-style="medium"
-              time-style="medium"
-            />
+            {{ formatDateTime(detail.data.value.created_at) }}
+            <span class="text-muted">· <RelativeTime :datetime="detail.data.value.created_at" /></span>
           </dd>
         </dl>
 
         <section class="space-y-2">
-          <h3 class="font-medium">
+          <h3 class="text-sm font-semibold text-highlighted">
             Payload
           </h3>
           <pre class="max-h-64 overflow-auto rounded-md bg-elevated p-3 text-xs">{{ JSON.stringify(detail.data.value.payload, null, 2) }}</pre>
         </section>
 
         <section class="space-y-2">
-          <h3 class="font-medium">
-            Attempts <span class="text-sm font-normal text-muted">({{ detail.data.value.attempts.length }})</span>
+          <h3 class="text-sm font-semibold text-highlighted">
+            Attempts <span class="font-normal text-muted tabular-nums">({{ detail.data.value.attempts.length }})</span>
           </h3>
           <DeliveriesAttemptLog :attempts="detail.data.value.attempts" />
         </section>

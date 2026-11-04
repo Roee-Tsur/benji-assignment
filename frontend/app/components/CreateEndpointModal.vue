@@ -48,6 +48,7 @@ watch(open, (isOpen) => {
     v-model:open="open"
     :title="created ? 'Endpoint created' : 'New endpoint'"
     :dismissible="!created"
+    :ui="{ footer: 'justify-end' }"
   >
     <template #body>
       <div
@@ -90,6 +91,7 @@ watch(open, (isOpen) => {
           label="URL"
           name="url"
           required
+          help="The mock receiver's /mock/ok, /mock/fail, /mock/flaky?n=2 and /mock/slow?s=3 are handy for trying things out."
         >
           <UInput
             v-model="state.url"
@@ -116,13 +118,20 @@ watch(open, (isOpen) => {
         label="Done"
         @click="open = false"
       />
-      <UButton
-        v-else
-        type="submit"
-        form="create-endpoint"
-        label="Create endpoint"
-        :loading="createEndpoint.isPending.value"
-      />
+      <template v-else>
+        <UButton
+          label="Cancel"
+          color="neutral"
+          variant="ghost"
+          @click="open = false"
+        />
+        <UButton
+          type="submit"
+          form="create-endpoint"
+          label="Create endpoint"
+          :loading="createEndpoint.isPending.value"
+        />
+      </template>
     </template>
   </UModal>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Attempt } from '~/api/client'
 import { attemptOutcome } from '~/domain/deliveryProgress'
+import { formatDateTime, formatMilliseconds } from '~/domain/format'
 
 const props = defineProps<{ attempts: readonly Attempt[] }>()
 
@@ -8,7 +9,7 @@ const props = defineProps<{ attempts: readonly Attempt[] }>()
 const rows = computed(() => [...props.attempts].reverse().map(attempt => ({
   ...attempt,
   result: attemptOutcome(attempt),
-  durationMs: Date.parse(attempt.finished_at) - Date.parse(attempt.started_at)
+  duration: formatMilliseconds(Date.parse(attempt.finished_at) - Date.parse(attempt.started_at))
 })))
 </script>
 
@@ -17,7 +18,7 @@ const rows = computed(() => [...props.attempts].reverse().map(attempt => ({
     v-if="rows.length === 0"
     class="text-sm text-muted"
   >
-    No attempts yet.
+    No attempts yet. The first one is sent as soon as a worker claims the delivery.
   </p>
   <ol
     v-else
@@ -37,11 +38,12 @@ const rows = computed(() => [...props.attempts].reverse().map(attempt => ({
           variant="subtle"
           size="sm"
         />
-        <span class="text-muted tabular-nums">{{ attempt.durationMs }} ms</span>
+        <span class="text-muted tabular-nums">{{ attempt.duration }}</span>
         <NuxtTime
           :datetime="attempt.started_at"
           time-style="medium"
-          class="ml-auto text-muted"
+          :title="formatDateTime(attempt.started_at)"
+          class="ml-auto text-muted tabular-nums"
         />
       </div>
       <p
