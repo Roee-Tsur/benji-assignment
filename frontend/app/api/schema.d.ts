@@ -66,7 +66,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Events
+         * @description The newest 20, with their fan-out counts.
+         */
+        get: operations["list_events"];
         put?: never;
         /** Submit Event */
         post: operations["submit_event"];
@@ -380,15 +384,11 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** EventSubmitted */
-        EventSubmitted: {
+        /** EventOut */
+        EventOut: {
             /** Id */
             id: string;
             type: components["schemas"]["EventType"];
-            /** Data */
-            data: {
-                [key: string]: unknown;
-            };
             /** Idempotency Key */
             idempotency_key: string;
             /**
@@ -396,8 +396,33 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /** Delivery Count */
+            /**
+             * Delivery Count
+             * @description How many endpoints it fanned out to.
+             */
             delivery_count: number;
+        };
+        /** EventSubmitted */
+        EventSubmitted: {
+            /** Id */
+            id: string;
+            type: components["schemas"]["EventType"];
+            /** Idempotency Key */
+            idempotency_key: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Delivery Count
+             * @description How many endpoints it fanned out to.
+             */
+            delivery_count: number;
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
             /**
              * Deduplicated
              * @description True when the key was seen before: this is the original event, and no new deliveries were created.
@@ -612,6 +637,26 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+        };
+    };
+    list_events: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventOut"][];
                 };
             };
         };

@@ -70,7 +70,16 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Review:** `/code-review` (high) found 4 candidates. It fixed 1: the mock receiver held a pooled DB connection while `slow` slept. It skipped the minor ones, listed in the PR.
 - **Output:** `POST /deliveries/{id}/replay`, `POST /endpoints/{id}/replay-failed`, disable per ADR 0003, `/mock/fail|flaky|slow`; 148 pytest tests.
 
-### 7. Ticket #6: deliveries view (2026-11-04)
+### 7. Ticket #7: Endpoints + Events views (2026-11-04)
+
+- **Asked:** run `/work-ticket 7` in its own worktree, in parallel with #6 (Deliveries view) in another, and keep shared files to minimal, called-out changes.
+- **Process:** it found the brief needed a `GET /events` that didn't exist and added it test-first. Then it messaged the #6 session to accept an `?event=` filter for the drill-down rather than editing deliveries files itself, and left notes in the shared folder. The frontend was test-first too: domain helpers, composables, then MSW component tests for the key lifecycle, dedup, 422, and show-once secret.
+- **Caught along the way:** the first key-lifecycle tests passed for the wrong reason, because happy-dom drops headers given to `new Request()` as a `Headers` object and every key arrived as `null`. A test-only shim fixed the harness. The secret test was checked against a mutant: without `gcTime: 0` the secret stays in Vue Query's mutation cache for five minutes after the modal closes, and the test fails.
+- **Choices it made and flagged in the PR:** the key is tied to the parsed type and data, so "Format" keeps it. The key is editable, which is how the 422 can be reached. A reused-key 422 shows inline instead of as a toast, through a `meta.toastError` hook on the shared mutation cache.
+- **Review:** `/code-review` (high) found 7 issues. It fixed 6: `crypto.randomUUID` crashing on non-HTTPS hosts, two accessible-name mismatches, a missing events index, duplicated event schemas, and a misnamed composable file. The drill-down filter waits on #6.
+- **Output:** Endpoints view (inline URL validation, enable toggle, replay failed), Events view (trigger form plus recent events), `GET /events`; 150 pytest tests and 42 Vitest tests.
+
+### 8. Ticket #6: deliveries view (2026-11-04)
 
 - **Asked:** run `/work-ticket 6` in its own worktree, in parallel with #7 (endpoints + events views), keeping to the deliveries page and its own composables and calling out any shared file in the PR.
 - **Process:** the backend list had no filters, paging, or counts, so it added them first, test-first: filters, a keyset cursor on `(created_at, id)` (including ties within one fan-out), and `GET /deliveries/counts`. On the frontend, the pure parts (countdown text, outcome labels, status-change detection) got unit tests, and the Vue Query layer got MSW tests under fake timers before the code. The rollback test was mutation-checked: with the rollback removed, it fails.
