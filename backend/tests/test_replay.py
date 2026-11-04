@@ -148,6 +148,25 @@ async def test_replay_failed_replays_only_the_endpoints_failed_deliveries(
     }
 
 
+async def test_the_endpoint_list_counts_failed_deliveries_until_they_are_replayed(
+    app: FastAPI, client: AsyncClient
+) -> None:
+    target = await create_endpoint(client, url=RECEIVER, event_types=["campaign_updated"])
+    other = await create_endpoint(client, url=RECEIVER, event_types=["member_account_linked"])
+    await submit_event(client, key="a", event_type="campaign_updated")
+    await submit_event(client, key="b", event_type="campaign_updated")
+    await fail_every_delivery(app)
+    await submit_event(client, key="c", event_type="campaign_updated")  # pending: not counted
+
+    async def failed_counts() -> dict[str, int]:
+        listed = (await client.get("/endpoints")).json()
+        return {endpoint["id"]: endpoint["failed_count"] for endpoint in listed}
+
+    assert await failed_counts() == {target["id"]: 2, other["id"]: 0}
+    await client.post(f"/endpoints/{target['id']}/replay-failed")
+    assert await failed_counts() == {target["id"]: 0, other["id"]: 0}
+
+
 async def test_replay_failed_with_nothing_failed_replays_nothing(client: AsyncClient) -> None:
     endpoint = await create_endpoint(client)
 

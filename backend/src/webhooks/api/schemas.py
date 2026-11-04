@@ -7,7 +7,7 @@ from typing import Annotated, Any, Self
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, HttpUrl
 
 from webhooks.domain.enums import AttemptOutcome, DeliveryStatus, EventType, FailureReason
-from webhooks.models import Delivery, Event
+from webhooks.models import Delivery, Endpoint, Event
 
 
 def _unique[T](items: list[T]) -> list[T]:
@@ -31,6 +31,16 @@ class EndpointOut(BaseModel):
     event_types: list[EventType]
     enabled: bool
     created_at: datetime
+
+
+class EndpointListed(EndpointOut):
+    failed_count: int = Field(
+        description="How many of its deliveries are failed: what replay-failed would retry."
+    )
+
+    @classmethod
+    def from_model(cls, endpoint: Endpoint, *, failed_count: int) -> Self:
+        return cls(**EndpointOut.model_validate(endpoint).model_dump(), failed_count=failed_count)
 
 
 class EndpointCreated(EndpointOut):

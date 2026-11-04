@@ -5,6 +5,7 @@ from webhooks.api.problems import problem_responses
 from webhooks.api.schemas import (
     EndpointCreate,
     EndpointCreated,
+    EndpointListed,
     EndpointOut,
     EndpointUpdate,
     ReplayedFailed,
@@ -25,9 +26,11 @@ async def create_endpoint(
 
 
 @router.get("")
-async def list_endpoints(session: SessionDep) -> list[EndpointOut]:
+async def list_endpoints(session: SessionDep) -> list[EndpointListed]:
+    """Newest first, with their failed-delivery counts."""
     return [
-        EndpointOut.model_validate(endpoint) for endpoint in await endpoints.list_endpoints(session)
+        EndpointListed.from_model(listed.endpoint, failed_count=listed.failed_count)
+        for listed in await endpoints.list_endpoints(session)
     ]
 
 

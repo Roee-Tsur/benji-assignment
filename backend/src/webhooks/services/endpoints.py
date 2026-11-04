@@ -1,7 +1,8 @@
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from webhooks.domain import signing
@@ -27,9 +28,22 @@ async def create_endpoint(
     return endpoint
 
 
-async def list_endpoints(session: AsyncSession) -> Sequence[Endpoint]:
-    query = select(Endpoint).order_by(Endpoint.created_at.desc(), Endpoint.id.desc())
-    return (await session.scalars(query)).all()
+@dataclass(frozen=True)
+class ListedEndpoint:
+    endpoint: Endpoint
+    failed_count: int
+
+
+async def list_endpoints(session: AsyncSession) -> Sequence[ListedEndpoint]:
+    """Newest first, each with how many failed deliveries "replay failed" would retry."""
+    failed_count = (
+        select(func.count())
+        .select_from(Delivery)
+        .where(Delivery.endpoint_id == Endpoint.id, Delivery.status == DeliveryStatus.FAILED)
+        .scalar_subquery()
+    )
+    query = select(Endpoint, failed_count).order_by(Endpoint.created_at.desc(), Endpoint.id.desc())
+    return [ListedEndpoint(endpoint, count) for endpoint, count in await session.execute(query)]
 
 
 async def set_enabled(
