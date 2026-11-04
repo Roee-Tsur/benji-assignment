@@ -4,10 +4,10 @@ import json
 from datetime import datetime
 from typing import Annotated, Any, Self
 
-from pydantic import AfterValidator, BaseModel, Field, HttpUrl
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, HttpUrl
 
 from webhooks.domain.enums import AttemptOutcome, DeliveryStatus, EventType, FailureReason
-from webhooks.models import Attempt, Delivery, Endpoint, Event
+from webhooks.models import Delivery, Event
 
 
 def _unique[T](items: list[T]) -> list[T]:
@@ -24,29 +24,17 @@ class EndpointUpdate(BaseModel):
 
 
 class EndpointOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     url: str
     event_types: list[EventType]
     enabled: bool
     created_at: datetime
 
-    @classmethod
-    def from_model(cls, endpoint: Endpoint) -> Self:
-        return cls(
-            id=endpoint.id,
-            url=endpoint.url,
-            event_types=[EventType(event_type) for event_type in endpoint.event_types],
-            enabled=endpoint.enabled,
-            created_at=endpoint.created_at,
-        )
-
 
 class EndpointCreated(EndpointOut):
     secret: str = Field(description="The signing secret. Returned only here, once.")
-
-    @classmethod
-    def from_created(cls, endpoint: Endpoint) -> Self:
-        return cls(**EndpointOut.from_model(endpoint).model_dump(), secret=endpoint.secret)
 
 
 class EventCreate(BaseModel):
@@ -114,6 +102,8 @@ class DeliveryOut(BaseModel):
 
 
 class AttemptOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     number: int
     started_at: datetime
@@ -123,20 +113,6 @@ class AttemptOut(BaseModel):
     response_status: int | None
     response_body: str | None = Field(description="Truncated to 2 KB.")
     error: str | None
-
-    @classmethod
-    def from_model(cls, attempt: Attempt) -> Self:
-        return cls(
-            id=attempt.id,
-            number=attempt.number,
-            started_at=attempt.started_at,
-            finished_at=attempt.finished_at,
-            request_headers=attempt.request_headers,
-            outcome=attempt.outcome,
-            response_status=attempt.response_status,
-            response_body=attempt.response_body,
-            error=attempt.error,
-        )
 
 
 class DeliveryDetail(DeliveryOut):
@@ -148,5 +124,5 @@ class DeliveryDetail(DeliveryOut):
         return cls(
             **DeliveryOut.from_model(delivery).model_dump(),
             payload=json.loads(delivery.event.envelope),
-            attempts=[AttemptOut.from_model(attempt) for attempt in delivery.attempts],
+            attempts=[AttemptOut.model_validate(attempt) for attempt in delivery.attempts],
         )

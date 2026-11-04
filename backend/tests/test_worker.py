@@ -158,3 +158,20 @@ async def test_each_delivery_is_claimed_once(client: AsyncClient, worker: Delive
 
     deliveries = await list_deliveries(client)
     assert [d["attempt_count"] for d in deliveries] == [1, 1]
+
+
+async def test_any_request_error_is_recorded_rather_than_stranding_the_delivery(
+    app: FastAPI, client: AsyncClient
+) -> None:
+    await create_endpoint(client, url="https://receiver.example/hook")
+    await submit_event(client)
+
+    async def receiver(request: httpx.Request) -> httpx.Response:
+        raise httpx.DecodingError("bad gzip", request=request)
+
+    await worker_with_transport(app, receiver).run_once()
+
+    [delivery] = await list_deliveries(client)
+    assert delivery["status"] == "failed"
+    [attempt] = (await client.get(f"/deliveries/{delivery['id']}")).json()["attempts"]
+    assert attempt["outcome"] == "connection_error"

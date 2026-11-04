@@ -101,19 +101,22 @@ async def claim_next(
                 lease_expires_at=now + lease_duration,
                 updated_at=now,
             )
-            .returning(Delivery.id, Delivery.endpoint_id, Delivery.event_id)
+            .returning(Delivery.id)
         )
     ).first()
     if claimed is None:
         await session.rollback()
         return None
 
-    url, secret = (
+    url, secret, body = (
         await session.execute(
-            select(Endpoint.url, Endpoint.secret).where(Endpoint.id == claimed.endpoint_id)
+            select(Endpoint.url, Endpoint.secret, Event.envelope)
+            .select_from(Delivery)
+            .join(Delivery.endpoint)
+            .join(Delivery.event)
+            .where(Delivery.id == claimed.id)
         )
     ).one()
-    body = (await session.scalars(select(Event.envelope).where(Event.id == claimed.event_id))).one()
     await session.commit()
     return ClaimedDelivery(claimed.id, lease_token, url, secret, body)
 

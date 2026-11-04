@@ -57,3 +57,11 @@ async def test_at_most_one_delivery_per_event_and_endpoint(
         )
         with pytest.raises(IntegrityError):
             await session.commit()
+
+
+async def test_http_error_problems_keep_their_headers(client: AsyncClient) -> None:
+    response = await client.delete("/events")
+
+    assert response.status_code == 405
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.headers["allow"] == "POST"

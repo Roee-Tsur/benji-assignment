@@ -71,7 +71,7 @@ class DeliveryWorker:
         headers = {
             "content-type": "application/json",
             "user-agent": USER_AGENT,
-            # A fresh timestamp per attempt, so receivers' tolerance window never rejects a retry.
+            # A fresh timestamp per attempt keeps it inside receivers' tolerance window.
             **signing.signature_headers(
                 claimed.secret, claimed.delivery_id, started_at, claimed.body
             ),
@@ -87,7 +87,7 @@ class DeliveryWorker:
         except httpx.TimeoutException as error:
             # Outcome unknown: the receiver may have processed it. `webhook-id` lets it dedupe.
             return self._failure(started_at, headers, AttemptOutcome.TIMEOUT, error)
-        except httpx.TransportError as error:
+        except httpx.RequestError as error:  # anything else short of a usable response
             return self._failure(started_at, headers, AttemptOutcome.CONNECTION_ERROR, error)
 
         return AttemptResult(

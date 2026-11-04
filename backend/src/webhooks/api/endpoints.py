@@ -15,13 +15,13 @@ async def create_endpoint(
     endpoint = await endpoints.create_endpoint(
         session, url=str(body.url), event_types=body.event_types, now=runtime.clock.now()
     )
-    return EndpointCreated.from_created(endpoint)
+    return EndpointCreated.model_validate(endpoint)
 
 
 @router.get("")
 async def list_endpoints(session: SessionDep) -> list[EndpointOut]:
     return [
-        EndpointOut.from_model(endpoint) for endpoint in await endpoints.list_endpoints(session)
+        EndpointOut.model_validate(endpoint) for endpoint in await endpoints.list_endpoints(session)
     ]
 
 
@@ -30,4 +30,4 @@ async def update_endpoint(
     endpoint_id: str, body: EndpointUpdate, session: SessionDep
 ) -> EndpointOut:
     endpoint = await endpoints.set_enabled(session, endpoint_id, enabled=body.enabled)
-    return EndpointOut.from_model(endpoint)
+    return EndpointOut.model_validate(endpoint)

@@ -27,17 +27,19 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
         runtime = Runtime(settings, create_sessionmaker(engine), clock)
         app.state.runtime = runtime
 
-        async with httpx.AsyncClient() as http:
-            worker = DeliveryWorker(runtime.sessions, http, clock, settings)
-            task = asyncio.create_task(worker.run()) if settings.worker_enabled else None
-            try:
-                yield
-            finally:
-                if task is not None:
-                    task.cancel()  # graceful shutdown (lease release) is #4
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await task
-        await engine.dispose()
+        try:
+            async with httpx.AsyncClient() as http:
+                worker = DeliveryWorker(runtime.sessions, http, clock, settings)
+                task = asyncio.create_task(worker.run()) if settings.worker_enabled else None
+                try:
+                    yield
+                finally:
+                    if task is not None:
+                        task.cancel()  # graceful shutdown (lease release) is #4
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await task
+        finally:
+            await engine.dispose()
 
     app = FastAPI(
         title="Benji Webhooks",

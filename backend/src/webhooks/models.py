@@ -54,6 +54,7 @@ class Delivery(Base):
     __table_args__ = (
         UniqueConstraint("event_id", "endpoint_id"),
         Index("ix_deliveries_status_next_attempt_at", "status", "next_attempt_at"),
+        Index("ix_deliveries_created_at_id", "created_at", "id"),  # newest-first listing
     )
 
     # Also the `webhook-id`: stable across attempts and replays, so receivers can dedupe on it.

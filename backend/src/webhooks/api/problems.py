@@ -1,5 +1,6 @@
 """Every error leaves the API as an RFC 9457 `application/problem+json` document."""
 
+from collections.abc import Mapping
 from http import HTTPStatus
 from typing import Any
 
@@ -32,13 +33,21 @@ class ValidationProblem(Problem):
 
 
 def problem_response(
-    status: int, detail: str | None = None, *, title: str | None = None, **extensions: Any
+    status: int,
+    detail: str | None = None,
+    *,
+    title: str | None = None,
+    headers: Mapping[str, str] | None = None,
+    **extensions: Any,
 ) -> JSONResponse:
     problem = {"type": "about:blank", "title": title or HTTPStatus(status).phrase, "status": status}
     if detail is not None:
         problem["detail"] = detail
     return JSONResponse(
-        {**problem, **extensions}, status_code=status, media_type=PROBLEM_MEDIA_TYPE
+        {**problem, **extensions},
+        status_code=status,
+        headers=headers,
+        media_type=PROBLEM_MEDIA_TYPE,
     )
 
 
@@ -69,7 +78,7 @@ def install_problem_handlers(app: FastAPI) -> None:
         assert isinstance(error, HTTPException)
         phrase = HTTPStatus(error.status_code).phrase
         detail = None if error.detail == phrase else str(error.detail)
-        return problem_response(error.status_code, detail)
+        return problem_response(error.status_code, detail, headers=error.headers)
 
     async def validation_error(_request: Request, error: Exception) -> JSONResponse:
         assert isinstance(error, RequestValidationError)
