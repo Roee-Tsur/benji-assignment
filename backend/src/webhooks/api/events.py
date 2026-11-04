@@ -53,7 +53,7 @@ async def submit_event(
     )
     if submitted.deduplicated:
         response.status_code = status.HTTP_200_OK
-    return EventSubmitted.from_model(
+    return EventSubmitted.from_submitted(
         submitted.event,
         delivery_count=submitted.delivery_count,
         deduplicated=submitted.deduplicated,

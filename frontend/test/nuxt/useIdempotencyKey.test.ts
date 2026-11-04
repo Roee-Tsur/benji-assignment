@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { withSetup } from './helpers'
 
 describe('useIdempotencyKey', () => {
@@ -24,6 +24,23 @@ describe('useIdempotencyKey', () => {
 
     renew()
 
+    expect(key.value).not.toBe(first)
+  })
+})
+
+describe('useIdempotencyKey off a secure context', () => {
+  it('still makes distinct keys without crypto.randomUUID', async () => {
+    const randomUUID = crypto.randomUUID
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true })
+    onTestFinished(() => {
+      Object.defineProperty(crypto, 'randomUUID', { value: randomUUID, configurable: true })
+    })
+    const { key, renew } = await withSetup(() => useIdempotencyKey(() => 'a'))
+    const first = key.value
+
+    renew()
+
+    expect(first).toMatch(/^[0-9a-f]{32}$/)
     expect(key.value).not.toBe(first)
   })
 })

@@ -46,31 +46,6 @@ class EventCreate(BaseModel):
     data: dict[str, Any]
 
 
-class EventSubmitted(BaseModel):
-    id: str
-    type: EventType
-    data: dict[str, Any]
-    idempotency_key: str
-    created_at: datetime
-    delivery_count: int
-    deduplicated: bool = Field(
-        description="True when the key was seen before: this is the original event, "
-        "and no new deliveries were created."
-    )
-
-    @classmethod
-    def from_model(cls, event: Event, *, delivery_count: int, deduplicated: bool) -> Self:
-        return cls(
-            id=event.id,
-            type=event.type,
-            data=event.data,
-            idempotency_key=event.idempotency_key,
-            created_at=event.created_at,
-            delivery_count=delivery_count,
-            deduplicated=deduplicated,
-        )
-
-
 class EventOut(BaseModel):
     id: str
     type: EventType
@@ -86,6 +61,22 @@ class EventOut(BaseModel):
             idempotency_key=event.idempotency_key,
             created_at=event.created_at,
             delivery_count=delivery_count,
+        )
+
+
+class EventSubmitted(EventOut):
+    data: dict[str, Any]
+    deduplicated: bool = Field(
+        description="True when the key was seen before: this is the original event, "
+        "and no new deliveries were created."
+    )
+
+    @classmethod
+    def from_submitted(cls, event: Event, *, delivery_count: int, deduplicated: bool) -> Self:
+        return cls(
+            **EventOut.from_model(event, delivery_count=delivery_count).model_dump(),
+            data=event.data,
+            deduplicated=deduplicated,
         )
 
 

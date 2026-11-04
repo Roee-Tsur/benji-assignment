@@ -5,6 +5,8 @@ import { eventTypes } from '~/domain/eventTypes'
 
 const events = useRecentEvents()
 
+const fanOut = (count: number) => `${count} ${count === 1 ? 'delivery' : 'deliveries'}`
+
 const columns: TableColumn<Event>[] = [
   { accessorKey: 'type', header: 'Event type' },
   { accessorKey: 'id', header: 'Event' },
@@ -54,10 +56,10 @@ const columns: TableColumn<Event>[] = [
       <template #delivery_count-cell="{ row }">
         <ULink
           :to="{ path: '/deliveries', query: { event: row.original.id } }"
-          :aria-label="`View the ${row.original.delivery_count} deliveries of ${row.original.id}`"
+          :aria-label="`${fanOut(row.original.delivery_count)} of ${row.original.id}`"
           class="inline-flex items-center gap-1"
         >
-          {{ row.original.delivery_count }} {{ row.original.delivery_count === 1 ? 'delivery' : 'deliveries' }}
+          {{ fanOut(row.original.delivery_count) }}
           <UIcon name="i-lucide-arrow-right" />
         </ULink>
       </template>

@@ -81,11 +81,11 @@ const columns: TableColumn<Endpoint>[] = [
           </div>
         </template>
         <template #enabled-cell="{ row }">
-          <!-- The visible label carries the state as text; the accessible name says which endpoint. -->
+          <!-- The visible label carries the state as text; the accessible name repeats it and says which endpoint. -->
           <USwitch
             :model-value="row.original.enabled"
             :label="row.original.enabled ? 'Enabled' : 'Disabled'"
-            :aria-label="`Enabled: ${row.original.url}`"
+            :aria-label="`${row.original.enabled ? 'Enabled' : 'Disabled'}: ${row.original.url}`"
             :loading="setEnabled.isPendingFor(row.original.id)"
             @update:model-value="enabled => toggle(row.original, enabled)"
           />

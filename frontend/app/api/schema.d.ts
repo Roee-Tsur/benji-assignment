@@ -363,10 +363,6 @@ export interface components {
             /** Id */
             id: string;
             type: components["schemas"]["EventType"];
-            /** Data */
-            data: {
-                [key: string]: unknown;
-            };
             /** Idempotency Key */
             idempotency_key: string;
             /**
@@ -374,8 +370,15 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /** Delivery Count */
+            /**
+             * Delivery Count
+             * @description How many endpoints it fanned out to.
+             */
             delivery_count: number;
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
             /**
              * Deduplicated
              * @description True when the key was seen before: this is the original event, and no new deliveries were created.

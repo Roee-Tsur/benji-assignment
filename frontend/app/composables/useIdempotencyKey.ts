@@ -6,11 +6,11 @@
  * keeps the key), or `undefined` while the input is invalid (which keeps the key too).
  */
 export function useIdempotencyKey(submission: () => string | undefined) {
-  const key = ref(crypto.randomUUID())
+  const key = ref(newKey())
   let keyedSubmission = submission()
 
   function renew() {
-    key.value = crypto.randomUUID()
+    key.value = newKey()
   }
 
   watch(submission, (next) => {
@@ -20,4 +20,10 @@ export function useIdempotencyKey(submission: () => string | undefined) {
   })
 
   return { key, renew }
+}
+
+/** `randomUUID` needs a secure context (HTTPS or localhost); `getRandomValues` works on any origin. */
+function newKey(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('')
 }
