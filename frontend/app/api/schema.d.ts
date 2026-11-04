@@ -89,9 +89,29 @@ export interface paths {
         };
         /**
          * List Deliveries
-         * @description The newest 50. Filters and paging come with the deliveries view.
+         * @description Newest first, a page at a time.
          */
         get: operations["list_deliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/deliveries/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count Deliveries
+         * @description Per status, regardless of paging, for the dashboard's status chips.
+         */
+        get: operations["count_deliveries"];
         put?: never;
         post?: never;
         delete?: never;
@@ -180,6 +200,20 @@ export interface components {
          * @enum {string}
          */
         AttemptOutcome: "response" | "timeout" | "connection_error" | "interrupted";
+        /**
+         * DeliveryCounts
+         * @description How many deliveries are in each status.
+         */
+        DeliveryCounts: {
+            /** Pending */
+            pending: number;
+            /** In Progress */
+            in_progress: number;
+            /** Succeeded */
+            succeeded: number;
+            /** Failed */
+            failed: number;
+        };
         /** DeliveryDetail */
         DeliveryDetail: {
             /**
@@ -274,6 +308,16 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** DeliveryPage */
+        DeliveryPage: {
+            /** Items */
+            items: components["schemas"]["DeliveryOut"][];
+            /**
+             * Next Cursor
+             * @description Pass as `cursor` for the next, older page; null on the last page.
+             */
+            next_cursor: string | null;
         };
         /**
          * DeliveryStatus
@@ -682,7 +726,14 @@ export interface operations {
     };
     list_deliveries: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: components["schemas"]["DeliveryStatus"] | null;
+                endpoint_id?: string | null;
+                event_id?: string | null;
+                /** @description A previous page's `next_cursor`. */
+                cursor?: string | null;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -695,7 +746,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DeliveryOut"][];
+                    "application/json": components["schemas"]["DeliveryPage"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
+                };
+            };
+        };
+    };
+    count_deliveries: {
+        parameters: {
+            query?: {
+                endpoint_id?: string | null;
+                event_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveryCounts"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ValidationProblem"];
                 };
             };
         };

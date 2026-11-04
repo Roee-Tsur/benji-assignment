@@ -117,10 +117,13 @@ async def submit_event(
     return response.json()
 
 
-async def list_deliveries(client: AsyncClient) -> list[dict[str, Any]]:
-    response = await client.get("/deliveries")
+async def list_deliveries(client: AsyncClient, **params: Any) -> list[dict[str, Any]]:
+    """Every delivery matching `params` (the list's query parameters), on one page."""
+    response = await client.get("/deliveries", params=params)
     assert response.status_code == 200, response.text
-    return response.json()
+    page = response.json()
+    assert page["next_cursor"] is None, "more than one page: page through it instead"
+    return page["items"]
 
 
 async def only_delivery(client: AsyncClient) -> dict[str, Any]:

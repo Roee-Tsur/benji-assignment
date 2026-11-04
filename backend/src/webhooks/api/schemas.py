@@ -114,6 +114,22 @@ class DeliveryOut(BaseModel):
         )
 
 
+class DeliveryPage(BaseModel):
+    items: list[DeliveryOut]
+    next_cursor: str | None = Field(
+        description="Pass as `cursor` for the next, older page; null on the last page."
+    )
+
+
+class DeliveryCounts(BaseModel):
+    """How many deliveries are in each status."""
+
+    pending: int
+    in_progress: int
+    succeeded: int
+    failed: int
+
+
 class AttemptOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
