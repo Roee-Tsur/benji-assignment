@@ -88,11 +88,14 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
 ### Frontend shape
 
 - **API layer**: a client typed from FastAPI's OpenAPI (`openapi-typescript` + `openapi-fetch`), plus a single `ApiError` normalizer. CI fails if the generated client is out of date with the backend schema, so type safety holds end to end.
+  - `pnpm gen:api` reads the schema from the FastAPI app object, so no server has to be running; `--check` fails when `app/api/schema.d.ts` is stale.
+  - `ApiError` has a closed `kind`: `problem` (an RFC 9457 document), `http` (an error response that isn't one, e.g. a proxy 502), or `network`. Only network and 5xx errors are retried.
+  - The browser calls `/api` on the dashboard's own origin, and a Nuxt route rule proxies it to the backend. The backend therefore needs no CORS.
 - **State layer** ([ADR 0004](./adr/0004-server-state-in-vue-query.md)):
   - feature composables over Vue Query (`useEndpoints`, `useTriggerEvent`, `useDeliveries`, …) own loading, error, and in-flight state, polling, and invalidation;
   - a query key factory makes invalidation targeted;
   - filters and the open delivery live in the URL, not in a store.
-- **UI**: pages and components only render state and call composables.
+- **UI**: pages and components only render state and call composables. An ESLint rule enforces this: they can't use `fetch`/`$fetch`/`useFetch`, import the API client's value, or import Vue Query.
 - **Errors**: mutation failures show a toast; query failures show an inline error with retry. The treatment is the same in every view.
 - **Optimistic replay**: the row flips to `pending` immediately and rolls back with a toast if the request fails.
 - **Accessibility**:
@@ -158,8 +161,8 @@ Planned now; file and test links get filled in during the final docs-vs-code pas
 | Event trigger, dedup surfaced | Trigger form | e2e 2 |
 | Live delivery view | Polling all loaded pages + detail | e2e 2, 3; Vitest polling |
 | Attempt inspection, replay | Delivery slideover, optimistic replay | e2e 3; Vitest rollback |
-| Async UX, consistent errors | Vue Query composables, `ApiError` | Vitest `ApiError`, trigger form |
-| API / state / UI separation | `api/`, `composables/`, components | Code layout |
+| Async UX, consistent errors | Vue Query composables, `ApiError` | Vitest `ApiError` ([api-errors.test.ts](../frontend/test/unit/api-errors.test.ts), [endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)), trigger form |
+| API / state / UI separation | `api/`, `composables/`, components | Code layout; ESLint layering rule ([eslint.config.mjs](../frontend/eslint.config.mjs)) |
 
 ## Build order and cut line
 
