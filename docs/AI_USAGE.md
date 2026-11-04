@@ -1,6 +1,6 @@
 # AI Usage
 
-How AI was used to build this, session by session. Each entry is short: what I asked for, how I steered, and what I overrode. Each entry links its full chat transcript in [`docs/transcripts/`](./transcripts/), named by entry number (`01-…md` is entry 1). They are rendered from the session exports: prompts and replies verbatim, tool calls one line each, tool output left out, local paths and my email redacted. Entries 14 and 15 and the parallel research session in entry 1 have no transcript; they weren't exported.
+How AI was used to build this, session by session. Each entry is short: what I asked for, how I steered, and what I overrode. Each entry links its full chat transcript in [`docs/transcripts/`](./transcripts/), named by entry number (`01-…md` is entry 1). They are rendered from the session logs: prompts and replies verbatim, tool calls one line each, tool output left out, local paths and my email redacted.
 
 Tooling: Claude Code (Opus) in the desktop app.
 
@@ -24,7 +24,7 @@ Tooling: Claude Code (Opus) in the desktop app.
   - **Added:** URL-held filters and deep links, optimistic replay with rollback, visible "live" cues, a query key factory with ADR 0004 (no Pinia), MSW-backed component tests, an axe accessibility check, a CI check that the generated API client is current, and a dedicated UI polish ticket.
   - **Cut:** three backend refinements that don't change what the dashboard shows (per-endpoint cap, HTTP-date `Retry-After`, streaming capture).
 - **Output:** [PLAN.md](./PLAN.md), [GLOSSARY.md](../GLOSSARY.md), [ADR 0001](./adr/0001-database-as-delivery-queue.md), [ADR 0002](./adr/0002-standard-webhooks-signing.md), [ADR 0003](./adr/0003-disable-fails-pending-deliveries.md), [ADR 0004](./adr/0004-server-state-in-vue-query.md).
-- **Transcript:** [01-design-interview.md](./transcripts/01-design-interview.md)
+- **Transcript:** [01-design-interview.md](./transcripts/01-design-interview.md); the parallel research session: [01b-research-other-submissions.md](./transcripts/01b-research-other-submissions.md)
 
 ### 2. Ticket #1: backend walking skeleton (2026-11-04)
 
@@ -151,6 +151,7 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Process:** the AI checked the repo for Claude-only pieces. Running the app (README, Makefile, CI) had none, only `CLAUDE.md` and the `work-ticket` skill. It proposed four changes.
 - **Where I steered:** I took two of them: the shared instructions file and the editor config. I dropped the one that would have marked my own workflow rules (AI usage log, one PR per ticket) as author-only. Reviewers will read and run the code, not write to the repo.
 - **Output:** the instructions moved to `AGENTS.md`, which Cursor reads, and `CLAUDE.md` now imports it with `@AGENTS.md`, so there is still one source. `.vscode/` (Cursor reads it too) recommends the Python, Ruff, Vue, ESLint and Tailwind extensions, points at `backend/.venv`, and runs ruff and ESLint fixes on save.
+- **Transcript:** [14-cursor-support.md](./transcripts/14-cursor-support.md)
 
 ### 15. Ticket #29: idempotency key survives leaving Events (2026-11-04)
 
@@ -158,6 +159,7 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Where I steered:** I picked the fix from the issue's options: keep the key with the submission it belongs to in `sessionStorage` via VueUse, rather than reword the README, and kept the key rules unchanged.
 - **Process:** the new remount tests failed against the old composable and pass with `useSessionStorage`. In the app, on separate ports: trigger → Deliveries → Events → submit showed "Duplicate submission", a reload kept the key too, and changed data still got a new key. `/code-review` (low) found nothing.
 - **Output:** [useIdempotencyKey.ts](../frontend/app/composables/useIdempotencyKey.ts), with the remount tests and PLAN's Events bullet updated. README step 5 is true as written.
+- **Transcript:** [15-ticket-29-idempotency-key.md](./transcripts/15-ticket-29-idempotency-key.md)
 
 ### 16. Ticket #10: independent pre-submit review (2026-11-04)
 
@@ -175,4 +177,6 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Asked:** run `/work-ticket 33` from the review session: add the exported session transcripts to `docs/transcripts/` and link them from this file.
 - **Where I steered:** the AI mapped the 14 exports to entries and listed what wasn't exported, then asked about scope, format, and redaction before writing anything. I picked all 14 now and the rest later, readable Markdown with tool calls collapsed rather than raw JSONL, and subagent reports only as they appear in the parent session. For redaction I chose local paths and my email, and kept the injected skill and review text and the local demo `whsec_` secret as they were. I approved two sample files before the full set went in.
 - **Process:** a scratch script (kept out of the repo) renders each export: prompts, answers to its questions, and replies verbatim, each tool call one line, tool output and screenshots dropped. It found mid-turn messages and subagent reports that the plain transcript records miss. A scan before and after rendering found no tokens and no leftover paths or email. `main` moved while this ran, so the review transcript became entry 16.
-- **Output:** 14 transcripts (340 KB) in [docs/transcripts/](./transcripts/), each linked from its entry.
+- **Where I steered (2):** after the first PR, I pointed out that every session ran in this app, so the AI could reach the missing ones itself. It found them, and noticed the original exports were taken while their sessions were still running. It re-rendered all of them from the complete session logs on disk, since the app caps exports at six an hour, and added the research session (01b), entries 14 and 15, and this session. I approved the new files, including 01b naming other candidates' public repos.
+- **Output:** 18 transcripts in [docs/transcripts/](./transcripts/), each linked from its entry.
+- **Transcript:** [17-ticket-33-transcripts.md](./transcripts/17-ticket-33-transcripts.md) (ends just before the final commit)
