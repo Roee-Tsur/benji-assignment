@@ -102,3 +102,9 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Asked:** on a tight schedule, take Playwright off the plan and the tickets and move it to "With more time", while keeping the CI ticket.
 - **Where I steered:** the AI asked two questions before editing. The axe checks only ran through Playwright, so I chose to defer them with it rather than move them into Vitest. I had the change go on its own branch off `main`, not on the in-progress endpoint branch.
 - **Output:** PLAN.md without Playwright (Approach, Tests, traceability, build order) and a "With more time" entry for it; ticket #8 rescoped to CI only, and #9's README scope updated.
+
+### 11. "Replay failed" only when there is something to replay (2026-11-04)
+
+- **Asked:** a UX question: does "Replay failed" make sense on an endpoint with no failed deliveries? The AI said no. The button looked actionable and the zero case only surfaced as a toast after the click. It checked the API and found the view couldn't tell (no count on `EndpointOut`), then laid out three options and recommended adding the count.
+- **Steered:** the user picked that option and asked for it on top of the freshly merged UX fixes on `main`, rather than on the stale ticket branch the checkout was on.
+- **Output:** `GET /endpoints` returns `failed_count` (a subquery, in the same pattern as the events' `delivery_count`); the button reads "Replay 3 failed", is disabled at zero with a tooltip, and the list polls every 5s and refetches after a replay. One pytest test and one page test were added.

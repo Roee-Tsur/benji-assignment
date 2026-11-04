@@ -2,7 +2,8 @@ import createClient from 'openapi-fetch'
 import type { components, paths } from './schema'
 
 export type Schemas = components['schemas']
-export type Endpoint = Schemas['EndpointOut']
+/** An endpoint as listed: with its failed-delivery count. */
+export type Endpoint = Schemas['EndpointListed']
 export type EndpointCreated = Schemas['EndpointCreated']
 export type EventType = Schemas['EventType']
 export type EventSubmitted = Schemas['EventSubmitted']

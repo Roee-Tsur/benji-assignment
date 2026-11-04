@@ -32,6 +32,17 @@ function replay(endpoint: Endpoint) {
   })
 }
 
+/** `Replay 3 failed`: the count says what the click will do before it's made. */
+function replayLabel(endpoint: Endpoint) {
+  return endpoint.failed_count === 0 ? 'Replay failed' : `Replay ${formatCount(endpoint.failed_count, 'failed', 'failed')}`
+}
+
+function replayTooltip(endpoint: Endpoint) {
+  if (!endpoint.enabled) return 'Enable the endpoint to replay its failed deliveries'
+  if (endpoint.failed_count === 0) return 'No failed deliveries to replay'
+  return 'Retry every failed delivery with a fresh attempt budget'
+}
+
 // Fixed widths, so toggling an endpoint or a refetch doesn't shift the columns; the URL takes the rest.
 const columns: TableColumn<Endpoint>[] = [
   { accessorKey: 'url', header: 'URL', meta: { class: { td: 'truncate' } } },
@@ -110,19 +121,17 @@ const columns: TableColumn<Endpoint>[] = [
           <RelativeTime :datetime="row.original.created_at" />
         </template>
         <template #actions-cell="{ row }">
-          <UTooltip
-            :text="row.original.enabled ? 'Retry every failed delivery with a fresh attempt budget' : 'Enable the endpoint to replay its failed deliveries'"
-          >
+          <UTooltip :text="replayTooltip(row.original)">
             <!-- A wrapper, so the tooltip still shows while the button is disabled. -->
             <span class="inline-flex">
               <UButton
-                label="Replay failed"
+                :label="replayLabel(row.original)"
                 icon="i-lucide-rotate-ccw"
                 color="neutral"
                 variant="outline"
                 size="sm"
-                :aria-label="`Replay failed deliveries of ${row.original.url}`"
-                :disabled="!row.original.enabled"
+                :aria-label="`${replayLabel(row.original)}: ${row.original.url}`"
+                :disabled="!row.original.enabled || row.original.failed_count === 0"
                 :loading="replayFailed.isPendingFor(row.original.id)"
                 @click="replay(row.original)"
               />
