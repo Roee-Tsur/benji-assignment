@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import ColumnElement, select, update
+from sqlalchemy import ColumnElement, func, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -58,17 +58,82 @@ class _Settlement:
     next_attempt_at: datetime | None = None  # only when the delivery goes back to pending
 
 
-async def list_deliveries(session: AsyncSession, *, limit: int = 50) -> Sequence[Delivery]:
+@dataclass(frozen=True)
+class DeliveryFilter:
+    """Narrows a listing; `None` means any."""
+
+    status: DeliveryStatus | None = None
+    endpoint_id: str | None = None
+    event_id: str | None = None
+
+    def conditions(self) -> list[ColumnElement[bool]]:
+        conditions: list[ColumnElement[bool]] = []
+        if self.status is not None:
+            conditions.append(Delivery.status == self.status)
+        if self.endpoint_id is not None:
+            conditions.append(Delivery.endpoint_id == self.endpoint_id)
+        if self.event_id is not None:
+            conditions.append(Delivery.event_id == self.event_id)
+        return conditions
+
+
+@dataclass(frozen=True)
+class DeliveryPage:
+    deliveries: Sequence[Delivery]
+    # The id of the page's last delivery when an older one exists: where the next page starts.
+    next_cursor: str | None
+
+
+async def list_deliveries(
+    session: AsyncSession,
+    filters: DeliveryFilter | None = None,
+    *,
+    cursor: str | None = None,
+    limit: int = 50,
+) -> DeliveryPage:
+    """Newest first, by keyset: a page starts after its cursor's delivery in `(created_at, id)`.
+
+    Deliveries are never deleted, so a cursor stays valid; an unknown one yields an empty page.
+    """
     query = (
         select(Delivery)
+        .where(*(filters or DeliveryFilter()).conditions())
         .options(
             joinedload(Delivery.event).load_only(Event.type),
             joinedload(Delivery.endpoint).load_only(Endpoint.url),
         )
         .order_by(Delivery.created_at.desc(), Delivery.id.desc())
-        .limit(limit)
+        .limit(limit + 1)  # one more than the page, to know whether another page follows
     )
-    return (await session.scalars(query)).all()
+    if cursor is not None:
+        cursor_created_at = (
+            select(Delivery.created_at).where(Delivery.id == cursor).scalar_subquery()
+        )
+        query = query.where(
+            tuple_(Delivery.created_at, Delivery.id) < tuple_(cursor_created_at, cursor)
+        )
+    rows = (await session.scalars(query)).all()
+    page = rows[:limit]
+    return DeliveryPage(page, next_cursor=page[-1].id if len(rows) > limit else None)
+
+
+async def count_by_status(
+    session: AsyncSession,
+    filters: DeliveryFilter | None = None,
+) -> dict[DeliveryStatus, int]:
+    """Every status, including those with no deliveries. `filters.status` is ignored: the counts
+    are per status."""
+    filters = filters or DeliveryFilter()
+    by_status = DeliveryFilter(endpoint_id=filters.endpoint_id, event_id=filters.event_id)
+    query = (
+        select(Delivery.status, func.count())
+        .where(*by_status.conditions())
+        .group_by(Delivery.status)
+    )
+    counts = dict.fromkeys(DeliveryStatus, 0)
+    for status, count in await session.execute(query):
+        counts[status] = count
+    return counts
 
 
 async def get_delivery(session: AsyncSession, delivery_id: str) -> Delivery:
