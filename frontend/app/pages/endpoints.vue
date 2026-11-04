@@ -2,10 +2,12 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { Endpoint } from '~/api/client'
 import { eventTypes } from '~/domain/eventTypes'
+import { formatCount } from '~/domain/format'
 
 useHead({ title: 'Endpoints' })
 
 const endpoints = useEndpoints()
+const loadError = useLoadError(endpoints)
 const setEnabled = useSetEndpointEnabled()
 const replayFailed = useReplayFailed()
 const toast = useToast()
@@ -22,7 +24,7 @@ function toggle(endpoint: Endpoint, enabled: boolean) {
 function replay(endpoint: Endpoint) {
   replayFailed.mutate({ endpointId: endpoint.id }, {
     onSuccess: ({ replayed }) => toast.add({
-      title: replayed === 0 ? 'No failed deliveries to replay' : `Replayed ${replayed} failed ${replayed === 1 ? 'delivery' : 'deliveries'}`,
+      title: replayed === 0 ? 'No failed deliveries to replay' : `Replayed ${formatCount(replayed, 'failed delivery', 'failed deliveries')}`,
       color: replayed === 0 ? 'neutral' : 'success',
       icon: 'i-lucide-rotate-ccw',
       actions: replayed === 0 ? undefined : [{ label: 'View deliveries', to: { path: '/deliveries', query: { endpoint: endpoint.id } } }]
@@ -30,12 +32,13 @@ function replay(endpoint: Endpoint) {
   })
 }
 
+// Fixed widths, so toggling an endpoint or a refetch doesn't shift the columns; the URL takes the rest.
 const columns: TableColumn<Endpoint>[] = [
-  { accessorKey: 'url', header: 'URL' },
-  { accessorKey: 'event_types', header: 'Event types' },
-  { accessorKey: 'enabled', header: 'Status' },
-  { accessorKey: 'created_at', header: 'Created' },
-  { id: 'actions', header: 'Actions' }
+  { accessorKey: 'url', header: 'URL', meta: { class: { td: 'truncate' } } },
+  { accessorKey: 'event_types', header: 'Event types', meta: { class: { th: 'w-96', td: 'whitespace-normal' } } },
+  { accessorKey: 'enabled', header: 'Status', meta: { class: { th: 'w-36' } } },
+  { accessorKey: 'created_at', header: 'Created', meta: { class: { th: 'w-28' } } },
+  { id: 'actions', header: 'Actions', meta: { class: { th: 'w-44' } } }
 ]
 </script>
 
@@ -55,19 +58,32 @@ const columns: TableColumn<Endpoint>[] = [
 
     <template #body>
       <QueryError
-        v-if="endpoints.error.value"
-        :error="endpoints.error.value"
+        v-if="loadError"
+        :error="loadError"
         @retry="endpoints.refetch()"
       />
       <UTable
-        v-if="endpoints.data.value || !endpoints.error.value"
+        v-else
         :data="endpoints.data.value ?? []"
         :columns="columns"
-        :loading="endpoints.isPending.value"
-        empty="No endpoints yet. Create one to start receiving events."
+        :ui="{ base: 'w-full table-fixed' }"
       >
+        <template #empty>
+          <TableSkeleton v-if="endpoints.isPending.value" />
+          <UEmpty
+            v-else
+            variant="naked"
+            icon="i-lucide-webhook"
+            title="No endpoints yet"
+            description="An endpoint is a URL that receives a signed notification for each event type it subscribes to."
+            :actions="[{ label: 'New endpoint', icon: 'i-lucide-plus', onClick: () => { creating = true } }]"
+          />
+        </template>
         <template #url-cell="{ row }">
-          <span class="font-mono text-sm">{{ row.original.url }}</span>
+          <span
+            class="font-mono text-sm"
+            :title="row.original.url"
+          >{{ row.original.url }}</span>
         </template>
         <template #event_types-cell="{ row }">
           <div class="flex flex-wrap gap-1">
@@ -91,11 +107,7 @@ const columns: TableColumn<Endpoint>[] = [
           />
         </template>
         <template #created_at-cell="{ row }">
-          <NuxtTime
-            :datetime="row.original.created_at"
-            date-style="medium"
-            time-style="short"
-          />
+          <RelativeTime :datetime="row.original.created_at" />
         </template>
         <template #actions-cell="{ row }">
           <UTooltip

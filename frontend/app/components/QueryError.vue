@@ -13,6 +13,6 @@ defineEmits<{ retry: [] }>()
     icon="i-lucide-circle-alert"
     :title="error.title"
     :description="error.message === error.title ? undefined : error.message"
-    :actions="[{ label: 'Retry', color: 'error', variant: 'outline', onClick: () => $emit('retry') }]"
+    :actions="[{ label: 'Retry', icon: 'i-lucide-refresh-cw', color: 'error', variant: 'outline', onClick: () => $emit('retry') }]"
   />
 </template>

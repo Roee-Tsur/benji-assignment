@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Attempt } from '~/api/client'
 import { attemptOutcome } from '~/domain/deliveryProgress'
+import { formatDateTime, formatMilliseconds, formatResponseBody } from '~/domain/format'
 
 const props = defineProps<{ attempts: readonly Attempt[] }>()
 
@@ -8,7 +9,8 @@ const props = defineProps<{ attempts: readonly Attempt[] }>()
 const rows = computed(() => [...props.attempts].reverse().map(attempt => ({
   ...attempt,
   result: attemptOutcome(attempt),
-  durationMs: Date.parse(attempt.finished_at) - Date.parse(attempt.started_at)
+  duration: formatMilliseconds(Date.parse(attempt.finished_at) - Date.parse(attempt.started_at)),
+  body: attempt.response_body === null ? null : formatResponseBody(attempt.response_body)
 })))
 </script>
 
@@ -17,7 +19,7 @@ const rows = computed(() => [...props.attempts].reverse().map(attempt => ({
     v-if="rows.length === 0"
     class="text-sm text-muted"
   >
-    No attempts yet.
+    No attempts yet. The first one is sent as soon as a worker claims the delivery.
   </p>
   <ol
     v-else
@@ -37,11 +39,12 @@ const rows = computed(() => [...props.attempts].reverse().map(attempt => ({
           variant="subtle"
           size="sm"
         />
-        <span class="text-muted tabular-nums">{{ attempt.durationMs }} ms</span>
+        <span class="text-muted tabular-nums">{{ attempt.duration }}</span>
         <NuxtTime
           :datetime="attempt.started_at"
           time-style="medium"
-          class="ml-auto text-muted"
+          :title="formatDateTime(attempt.started_at)"
+          class="ml-auto text-muted tabular-nums"
         />
       </div>
       <p
@@ -50,11 +53,11 @@ const rows = computed(() => [...props.attempts].reverse().map(attempt => ({
       >
         {{ attempt.error }}
       </p>
-      <details v-if="attempt.response_body !== null">
+      <details v-if="attempt.body !== null">
         <summary class="cursor-pointer text-sm text-muted">
           Response body <span class="text-xs">(first 2 KB)</span>
         </summary>
-        <pre class="mt-2 max-h-48 overflow-auto rounded bg-elevated p-2 text-xs whitespace-pre-wrap">{{ attempt.response_body || '(empty)' }}</pre>
+        <pre class="mt-2 max-h-48 overflow-auto rounded-md bg-elevated p-3 text-xs whitespace-pre-wrap">{{ attempt.body }}</pre>
       </details>
       <details>
         <summary class="cursor-pointer text-sm text-muted">

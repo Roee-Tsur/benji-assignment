@@ -2,6 +2,7 @@
 import type { EventSubmitted, EventType } from '~/api/client'
 import { parseEventData } from '~/domain/eventData'
 import { eventTypeOptions, eventTypes } from '~/domain/eventTypes'
+import { formatCount } from '~/domain/format'
 
 const triggerEvent = useTriggerEvent()
 const state = reactive({
@@ -69,6 +70,17 @@ const deliveriesOf = (eventId: string) => ({ path: '/deliveries', query: { event
       :error="jsonError"
       help="Prefilled with a sample for the type. ⌘/Ctrl + Enter submits."
     >
+      <template #hint>
+        <UButton
+          label="Format"
+          icon="i-lucide-wand-sparkles"
+          color="neutral"
+          variant="ghost"
+          size="xs"
+          :disabled="Boolean(jsonError)"
+          @click="format"
+        />
+      </template>
       <UTextarea
         v-model="state.json"
         :rows="8"
@@ -79,15 +91,6 @@ const deliveriesOf = (eventId: string) => ({ path: '/deliveries', query: { event
         @keydown.enter.ctrl.prevent="submit"
       />
     </UFormField>
-    <UButton
-      label="Format"
-      icon="i-lucide-wand-sparkles"
-      color="neutral"
-      variant="outline"
-      size="sm"
-      :disabled="Boolean(jsonError)"
-      @click="format"
-    />
 
     <UFormField
       label="Idempotency key"
@@ -135,11 +138,20 @@ const deliveriesOf = (eventId: string) => ({ path: '/deliveries', query: { event
         variant="subtle"
         icon="i-lucide-copy-check"
         title="Duplicate submission: this is the original event"
-        :description="`This key was already used for the same event, so ${submitted.id} was returned again. No new deliveries were created (it fanned out to ${submitted.delivery_count} when first submitted).`"
+        :description="`This key was already used for the same event, so ${submitted.id} was returned again. No new deliveries were created (it fanned out to ${formatCount(submitted.delivery_count, 'delivery', 'deliveries')} when first submitted).`"
         :actions="[
           { label: 'View its deliveries', to: deliveriesOf(submitted.id), color: 'neutral', variant: 'outline' },
           { label: 'New key', color: 'neutral', variant: 'ghost', onClick: newKey }
         ]"
+      />
+      <UAlert
+        v-else-if="submitted?.delivery_count === 0"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-circle-alert"
+        title="Event triggered, but nothing to deliver"
+        :description="`No enabled endpoint is subscribed to ${eventTypes[submitted.type].label.toLowerCase()} events, so ${submitted.id} fanned out to no deliveries.`"
+        :actions="[{ label: 'Add an endpoint', to: '/endpoints', color: 'neutral', variant: 'outline' }]"
       />
       <UAlert
         v-else-if="submitted"
@@ -147,7 +159,7 @@ const deliveriesOf = (eventId: string) => ({ path: '/deliveries', query: { event
         variant="subtle"
         icon="i-lucide-circle-check"
         title="Event triggered"
-        :description="`${submitted.id} fanned out to ${submitted.delivery_count} ${submitted.delivery_count === 1 ? 'delivery' : 'deliveries'}.`"
+        :description="`${submitted.id} fanned out to ${formatCount(submitted.delivery_count, 'delivery', 'deliveries')}.`"
         :actions="[{ label: 'View its deliveries', to: deliveriesOf(submitted.id), color: 'neutral', variant: 'outline' }]"
       />
     </div>

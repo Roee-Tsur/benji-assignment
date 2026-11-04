@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ApiError } from '~/api/errors'
-import { formatDuration } from '~/domain/deliveryProgress'
+import { formatRelativeTime } from '~/domain/format'
 
 const props = defineProps<{
   /** When the data shown was last fetched (ms); 0 before the first fetch. */
@@ -11,7 +11,7 @@ const props = defineProps<{
 defineEmits<{ retry: [] }>()
 
 const now = useClock()
-const ago = computed(() => `updated ${formatDuration((now.value.getTime() - props.updatedAt) / 1000)} ago`)
+const ago = computed(() => `updated ${formatRelativeTime(new Date(props.updatedAt).toISOString(), now.value.getTime())}`)
 </script>
 
 <template>

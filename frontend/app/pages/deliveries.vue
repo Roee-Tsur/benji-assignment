@@ -26,6 +26,7 @@ const deliveries = useDeliveries(filters)
 const counts = useDeliveryCounts(filters)
 const endpoints = useEndpoints()
 const highlighted = useStatusHighlights(() => deliveries.deliveries.value)
+const loadError = useLoadError(deliveries)
 
 // Select items can't hold `undefined`, so "All endpoints" is a sentinel.
 const ALL = 'all'
@@ -40,13 +41,15 @@ const endpointSelection = computed({
   }
 })
 
+// Fixed widths (the table is `table-fixed`), so a row's status, countdown or "ago" changing doesn't
+// shift every column; the endpoint takes the rest and truncates.
 const columns: TableColumn<Delivery>[] = [
-  { accessorKey: 'status', header: 'Status' },
-  { id: 'progress', header: 'Progress' },
-  { accessorKey: 'event_type', header: 'Event type' },
-  { accessorKey: 'endpoint_url', header: 'Endpoint' },
-  { accessorKey: 'created_at', header: 'Created' },
-  { accessorKey: 'id', header: 'Delivery' }
+  { accessorKey: 'status', header: 'Status', meta: { class: { th: 'w-32' } } },
+  { id: 'progress', header: 'Progress', meta: { class: { th: 'w-56' } } },
+  { accessorKey: 'event_type', header: 'Event type', meta: { class: { th: 'w-52' } } },
+  { accessorKey: 'endpoint_url', header: 'Endpoint', meta: { class: { td: 'truncate' } } },
+  { accessorKey: 'created_at', header: 'Created', meta: { class: { th: 'w-24' } } },
+  { accessorKey: 'id', header: 'Delivery', meta: { class: { th: 'w-36' } } }
 ]
 </script>
 
@@ -55,10 +58,10 @@ const columns: TableColumn<Delivery>[] = [
     <template #header>
       <UDashboardNavbar title="Deliveries">
         <template #right>
-          <!-- Only a failed poll counts; a failed "load more" is shown at the button. -->
+          <!-- Only a failed poll or first load counts; a failed "load more" is shown at the button. -->
           <DeliveriesLiveIndicator
             :updated-at="deliveries.dataUpdatedAt.value"
-            :error="deliveries.isRefetchError.value ? deliveries.error.value : null"
+            :error="deliveries.isRefetchError.value ? deliveries.error.value : loadError"
             @retry="deliveries.refetch()"
           />
         </template>
@@ -94,8 +97,8 @@ const columns: TableColumn<Delivery>[] = [
 
     <template #body>
       <QueryError
-        v-if="deliveries.error.value && !deliveries.data.value"
-        :error="deliveries.error.value"
+        v-if="loadError"
+        :error="loadError"
         @retry="deliveries.refetch()"
       />
       <template v-else>
@@ -104,31 +107,30 @@ const columns: TableColumn<Delivery>[] = [
           :data="deliveries.deliveries.value"
           :columns="columns"
           :get-row-id="(row: Delivery) => row.id"
-          :loading="deliveries.isPending.value || deliveries.isPlaceholderData.value"
+          :loading="deliveries.isPlaceholderData.value"
           :meta="{ class: { tr: row => highlighted.has(row.original.id) ? 'bg-primary/10' : '' } }"
-          :ui="{ tr: 'transition-colors duration-1000' }"
+          :ui="{ base: 'w-full table-fixed', tr: 'transition-colors duration-1000' }"
           @select="(_event, row) => openDeliveryId = row.original.id"
         >
           <template #empty>
-            <div
-              v-if="filtered"
-              class="space-y-2"
-            >
-              <p>No deliveries match these filters.</p>
-              <UButton
-                label="Clear filters"
-                color="neutral"
-                variant="outline"
-                size="sm"
-                @click="clearFilters"
-              />
-            </div>
-            <p v-else>
-              No deliveries yet. <ULink
-                to="/events"
-                class="text-primary"
-              >Trigger an event</ULink> to create some.
-            </p>
+            <!-- Placeholder rows are the previous filter's; while they're empty, the new ones are still loading. -->
+            <TableSkeleton v-if="deliveries.isPending.value || deliveries.isPlaceholderData.value" />
+            <UEmpty
+              v-else-if="filtered"
+              variant="naked"
+              icon="i-lucide-filter-x"
+              title="No deliveries match these filters"
+              description="Try another status or endpoint, or clear the filters to see every delivery."
+              :actions="[{ label: 'Clear filters', icon: 'i-lucide-x', color: 'neutral', variant: 'outline', onClick: clearFilters }]"
+            />
+            <UEmpty
+              v-else
+              variant="naked"
+              icon="i-lucide-send"
+              title="No deliveries yet"
+              description="Each event creates one delivery per enabled endpoint subscribed to its type."
+              :actions="[{ label: 'Trigger an event', icon: 'i-lucide-zap', to: '/events' }, { label: 'Add an endpoint', icon: 'i-lucide-plus', color: 'neutral', variant: 'outline', to: '/endpoints' }]"
+            />
           </template>
           <template #status-cell="{ row }">
             <DeliveryStatusBadge :status="row.original.status" />
@@ -140,19 +142,19 @@ const columns: TableColumn<Delivery>[] = [
             {{ eventTypes[row.original.event_type].label }}
           </template>
           <template #endpoint_url-cell="{ row }">
-            <span class="font-mono text-sm">{{ row.original.endpoint_url }}</span>
+            <span
+              class="font-mono text-sm"
+              :title="row.original.endpoint_url"
+            >{{ row.original.endpoint_url }}</span>
           </template>
           <template #created_at-cell="{ row }">
-            <NuxtTime
-              :datetime="row.original.created_at"
-              date-style="medium"
-              time-style="medium"
-            />
+            <RelativeTime :datetime="row.original.created_at" />
           </template>
           <template #id-cell="{ row }">
             <ULink
               :to="{ query: { ...route.query, delivery: row.original.id } }"
               class="font-mono text-xs"
+              :title="row.original.id"
             >
               {{ row.original.id.slice(0, 12) }}…
             </ULink>

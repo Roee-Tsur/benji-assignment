@@ -96,7 +96,8 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
   - a query key factory makes invalidation targeted;
   - filters and the open delivery live in the URL, not in a store.
 - **UI**: pages and components only render state and call composables. An ESLint rule enforces this: they can't use `fetch`/`$fetch`/`useFetch`, import the API client's value, or import Vue Query.
-- **Errors**: mutation failures show a toast; query failures show an inline error with retry. The treatment is the same in every view.
+- **Errors**: mutation failures show a toast; query failures show an inline error with retry. The treatment is the same in every view. A failed first load keeps its error on screen through the retries and polls after it (`useLoadError`), because Vue Query clears `error` whenever a fetch starts without data.
+- **States**: every table has a skeleton for its first load, an empty state that says what the view is for and offers the next step, and the inline error. Times read relative ("5m ago") with the absolute time on hover, and counts and durations are formatted in one place (`domain/format`). Light and dark follow the system, with a toggle in the sidebar.
 - **Optimistic replay**: the row flips to `pending` immediately and rolls back with a toast if the request fails.
 - **Accessibility**:
   - status badges use color, an icon, and text, never color alone;
@@ -162,7 +163,7 @@ Planned now; file and test links get filled in during the final docs-vs-code pas
 | Event trigger, dedup surfaced | Trigger form, `GET /events` | Vitest: key lifecycle, dedup notice, 422 mismatch inline, invalid JSON blocked ([triggerEventForm.test.ts](../frontend/test/nuxt/triggerEventForm.test.ts), [useIdempotencyKey.test.ts](../frontend/test/nuxt/useIdempotencyKey.test.ts), [eventData.test.ts](../frontend/test/unit/eventData.test.ts)); pytest: recent events with fan-out counts ([test_events_api.py](../backend/tests/test_events_api.py)); e2e 2 |
 | Live delivery view | Polling all loaded pages + detail | Vitest: polling backs off when terminal and resumes, every loaded page refreshes, detail polling ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)), countdown and highlights ([deliveryProgress.test.ts](../frontend/test/unit/deliveryProgress.test.ts)); e2e 2, 3 |
 | Attempt inspection, replay | Delivery slideover, optimistic replay | Vitest: optimistic replay and rollback ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)); e2e 3 |
-| Async UX, consistent errors | Vue Query composables, `ApiError` | Vitest `ApiError` ([api-errors.test.ts](../frontend/test/unit/api-errors.test.ts), [endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)), trigger form |
+| Async UX, consistent errors | Vue Query composables, `ApiError`, `useLoadError` | Vitest `ApiError` ([api-errors.test.ts](../frontend/test/unit/api-errors.test.ts), [endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)), trigger form incl. the zero fan-out notice ([triggerEventForm.test.ts](../frontend/test/nuxt/triggerEventForm.test.ts)), a failed load's error surviving retries and key changes ([useLoadError.test.ts](../frontend/test/nuxt/useLoadError.test.ts)), time and count formatting ([format.test.ts](../frontend/test/unit/format.test.ts)); before/after screenshots ([docs/screenshots](./screenshots/)) |
 | API / state / UI separation | `api/`, `composables/`, components | Code layout; ESLint layering rule ([eslint.config.mjs](../frontend/eslint.config.mjs)) |
 
 ## Build order and cut line

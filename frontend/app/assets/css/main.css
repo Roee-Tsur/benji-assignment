@@ -1,2 +1,10 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
+
+/* Tailwind v4 dropped the pointer cursor on buttons; clickable things should still look clickable. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+}

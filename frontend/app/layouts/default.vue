@@ -12,7 +12,19 @@ const links: NavigationMenuItem[] = [
   <UDashboardGroup>
     <UDashboardSidebar>
       <template #header>
-        <span class="font-semibold">Benji Webhooks</span>
+        <!-- Home is the first view (Deliveries): `/` redirects there. -->
+        <NuxtLink
+          to="/"
+          class="flex items-center gap-2 rounded-md outline-primary focus-visible:outline-2"
+        >
+          <span class="flex size-7 items-center justify-center rounded-md bg-primary text-inverted">
+            <UIcon
+              name="i-lucide-webhook"
+              class="size-4"
+            />
+          </span>
+          <span class="font-semibold text-highlighted">Benji Webhooks</span>
+        </NuxtLink>
       </template>
 
       <UNavigationMenu
@@ -20,6 +32,10 @@ const links: NavigationMenuItem[] = [
         orientation="vertical"
         aria-label="Main"
       />
+
+      <template #footer>
+        <UColorModeButton />
+      </template>
     </UDashboardSidebar>
 
     <slot />
