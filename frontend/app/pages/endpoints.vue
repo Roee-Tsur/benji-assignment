@@ -40,7 +40,7 @@ function replayLabel(endpoint: Endpoint) {
 function replayTooltip(endpoint: Endpoint) {
   if (!endpoint.enabled) return 'Enable the endpoint to replay its failed deliveries'
   if (endpoint.failed_count === 0) return 'No failed deliveries to replay'
-  return 'Retry every failed delivery with a fresh attempt budget'
+  return 'Replay every failed delivery with a fresh attempt budget'
 }
 
 // Fixed widths, so toggling an endpoint or a refetch doesn't shift the columns; the URL takes the rest.

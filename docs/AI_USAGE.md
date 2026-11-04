@@ -106,14 +106,29 @@ Tooling: Claude Code (Opus) in the desktop app.
 ### 11. "Replay failed" only when there is something to replay (2026-11-04)
 
 - **Asked:** a UX question: does "Replay failed" make sense on an endpoint with no failed deliveries? The AI said no. The button looked actionable and the zero case only surfaced as a toast after the click. It checked the API and found the view couldn't tell (no count on `EndpointOut`), then laid out three options and recommended adding the count.
-- **Steered:** the user picked that option and asked for it on top of the freshly merged UX fixes on `main`, rather than on the stale ticket branch the checkout was on.
+- **Where I steered:** I picked that option and asked for it on top of the freshly merged UX fixes on `main`, rather than on the stale ticket branch the checkout was on.
 - **Output:** `GET /endpoints` returns `failed_count` (a subquery, in the same pattern as the events' `delivery_count`); the button reads "Replay 3 failed", is disabled at zero with a tooltip, and the list polls every 5s and refetches after a replay. One pytest test and one page test were added.
 
 ### 12. Ticket #8: CI (2026-11-04)
 
 - **Asked:** run `/work-ticket 8`: one GitHub Actions workflow for lint, typecheck, pytest, Vitest, and the stale-API-client check.
 - **Process:** two jobs (backend, frontend). The frontend job also installs uv, because `pnpm gen:api --check` reads the schema from the FastAPI app. All checks passed locally, and the stale check was proven locally by appending to `schema.d.ts` (exit 1) and restoring it (exit 0).
-- **Steered:** a GitHub Actions outage left the first run queued. The AI suggested finishing on local proof and keeping the PR a draft until a real run is green and a deliberately stale commit fails, and I agreed rather than block on GitHub.
+- **Where I steered:** a GitHub Actions outage left the first run queued. The AI suggested finishing on local proof and keeping the PR a draft until a real run is green and a deliberately stale commit fails, and I agreed rather than block on GitHub.
 - **Review:** `/code-review` (low) found nothing.
 - **Merged during the GitHub Actions incident:** I chose to merge on the local proof and assume the workflow works, rather than wait. Confirming it on GitHub (a green run, and a stale commit that fails) is a follow-up.
 - **Output:** `.github/workflows/ci.yml`, merged before its first run on GitHub.
+
+### 13. Ticket #9: final docs pass (2026-11-04)
+
+- **Asked:** run `/work-ticket 9`: a README with a live GIF and a demo walkthrough, a docs-vs-code pass over PLAN, the ADRs and the glossary, and PLAN moved to final.
+- **Where I steered:** the AI stopped at the start because #8 (CI) was still open. I finished #8 first, then told it to continue.
+- **Process:** two subagents audited the docs against the code in parallel, one for the backend and one for the frontend, citing code for every contradiction. They found no behavior bugs, only doc drift:
+  - the Vitest list said polling "stops", when it backs off;
+  - the live indicator's example text and "rows expand" didn't match the UI;
+  - `data` must be a JSON object;
+  - interrupted attempts record no headers;
+  - PLAN still said "pre-build".
+
+  It fixed the docs, plus one UI string that said "Retry" where the glossary says "Replay". For the GIF, it recorded the dashboard with Playwright from a scratch script, so Playwright stayed out of the repo. It ran the app from a throwaway clone on separate ports, so my own dev servers kept running.
+- **Checks:** from a fresh clone, following only the README: install, `make lint typecheck test` (158 pytest and 101 Vitest tests), and the app running with the fast retry settings.
+- **Output:** [README.md](../README.md), [live-deliveries.gif](./screenshots/live-deliveries.gif), and PLAN.md checked against the code, with the traceability links filled in.

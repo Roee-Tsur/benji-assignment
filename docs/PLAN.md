@@ -4,7 +4,7 @@ A webhook notification system for Benji: customers register endpoints, subscribe
 
 Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). Vocabulary is defined in [GLOSSARY.md](../GLOSSARY.md); hard-to-reverse decisions are in [adr/](./adr/).
 
-**Status:** pre-build. This will be revised against what was actually built.
+**Status:** built. Tickets #1–#11 are merged, and this plan was checked against the code in the final docs pass (#9). Where the build changed the plan, the plan was updated, so it describes what exists.
 
 ## Approach
 
@@ -42,11 +42,11 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
 
 1. **Submit**: `POST /events` with a required `Idempotency-Key`. In one transaction it stores the Event and creates one Delivery (`pending`) per *enabled* endpoint subscribed to the type. This is a transactional outbox: endpoints are snapshotted at submit time. The envelope is serialized once and the bytes are stored; every attempt sends exactly those bytes.
 2. **Claim**: a continuous worker pool keeps up to 10 attempts in flight (`WORKER_CONCURRENCY`) and claims more as soon as a slot frees, so it never waits on a batch. A claim is a single `UPDATE … RETURNING` that:
-   - picks due `pending` rows;
+   - picks the most overdue due `pending` row (the pool calls it once per free slot);
    - sets `in progress`, a fresh `lease_token`, and a 30s lease expiry.
 3. **Attempt**: the claim re-checks the endpoint under its write lock; a delivery whose endpoint is disabled is failed (`endpoint_disabled`) instead of sent, and the claim moves on to the next. The worker signs with a fresh `webhook-timestamp`, so replays aren't rejected by receivers' 5-minute tolerance, then POSTs with a 10s timeout that bounds the whole request, not just each read. No DB transaction is held open during the HTTP call. The response body is stored truncated to 2KB. Each Attempt records:
    - timing;
-   - the request headers sent;
+   - the request headers sent (none are recorded for an `interrupted` attempt);
    - the truncated response body;
    - the outcome: an HTTP status, `timeout`, `connection_error`, or `interrupted` (lease expired or shutdown mid-attempt). A timeout is shown as "outcome unknown": the receiver may have processed it, and `webhook-id` lets it dedupe the retry.
 4. **Write-back**: results are written only `WHERE id = ? AND lease_token = ?`. A late result from a lost lease changes nothing, so it can't overwrite a newer attempt.
@@ -55,7 +55,7 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
    - 410 → `failed`, reason `endpoint_gone`; no retry.
    - Anything else (including 3xx, since redirects aren't followed), timeouts, and connection errors → retry, or `failed` with reason `attempts_exhausted` once the attempt budget is spent.
 6. **Lease reclaim**: an expired lease is recorded as an `interrupted` attempt, which counts against the budget so a poison delivery can't loop forever. An interrupted attempt is settled like any other retryable outcome: the delivery returns to `pending` after backoff, or fails with `attempts_exhausted` if that was the last attempt of its budget. The lease must outlast a request (checked at startup), or slow attempts would be reclaimed while still in flight.
-7. **Replay** (`POST /deliveries/{id}/replay`): a `failed` delivery returns to `pending` with a fresh attempt budget. Attempt numbers keep counting up and it keeps the same `webhook-id`. Replaying anything not `failed`, or a delivery whose endpoint is disabled, returns 409; the replay returns the delivery's detail. `POST /endpoints/{id}/replay-failed` replays every failed delivery of an endpoint in one conditional `UPDATE`, for recovery after an outage, and returns `{replayed: n}` (409 if the endpoint is disabled). `GET /endpoints` lists each endpoint with its `failed_count`, what replay-failed would retry. Both decide in the `UPDATE` itself (`failed` and endpoint enabled), and the fresh budget is the current `WEBHOOK_RETRY_MAX_ATTEMPTS`.
+7. **Replay** (`POST /deliveries/{id}/replay`): a `failed` delivery returns to `pending` with a fresh attempt budget. Attempt numbers keep counting up and it keeps the same `webhook-id`. Replaying anything not `failed`, or a delivery whose endpoint is disabled, returns 409; the replay returns the delivery's detail. `POST /endpoints/{id}/replay-failed` replays every failed delivery of an endpoint in one conditional `UPDATE`, for recovery after an outage, and returns `{replayed: n}` (409 if the endpoint is disabled). `GET /endpoints` lists each endpoint with its `failed_count`, what replay-failed would retry once the endpoint is enabled. Both decide in the `UPDATE` itself (`failed` and endpoint enabled), and the fresh budget is the current `WEBHOOK_RETRY_MAX_ATTEMPTS`.
 
 **Retry policy:** 6 attempts per budget, exponential backoff with full jitter (base 2s, cap 5min). `Retry-After` is honored in its delta-seconds form and clamped to the cap. Settings: `WEBHOOK_RETRY_MAX_ATTEMPTS`, `WEBHOOK_RETRY_BASE_SECONDS`, `WEBHOOK_RETRY_CAP_SECONDS`, validated at startup. The pure `domain/retry_policy` module holds all three: `backoff`, `retry_delay` (`Retry-After` or backoff), and `classify` (2xx → success, 410 → endpoint gone, anything else or no response → retryable). The README shows the values that make retries visible in seconds; tests override them.
 
@@ -74,7 +74,7 @@ Exactly-once delivery over HTTP isn't possible, so we promise:
 - **At-least-once attempts, receiver-dedupable**: every attempt and replay of a delivery carries the same `webhook-id`.
 - **No ordering guarantee** across events. The envelope `timestamp` lets receivers order events themselves.
 
-Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transaction_created`, `campaign_updated`, `member_account_linked`. `data` is free-form JSON. An event whose serialized envelope (the bytes every attempt sends) is over 64 KiB is rejected with 413.
+Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transaction_created`, `campaign_updated`, `member_account_linked`. `data` is a free-form JSON object. An event whose serialized envelope (the bytes every attempt sends) is over 64 KiB is rejected with 413.
 
 ### Signing details
 
@@ -95,11 +95,11 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
   - filters and the open delivery live in the URL, not in a store.
 - **UI**: pages and components only render state and call composables. An ESLint rule enforces this: they can't use `fetch`/`$fetch`/`useFetch`, import the API client's value, or import Vue Query.
 - **Errors**: mutation failures show a toast; query failures show an inline error with retry. The treatment is the same in every view. A failed first load keeps its error on screen through the retries and polls after it (`useLoadError`), because Vue Query clears `error` whenever a fetch starts without data.
-- **States**: every table has a skeleton for its first load, an empty state that says what the view is for and offers the next step, and the inline error. Times read relative ("5m ago") with the absolute time on hover, and counts and durations are formatted in one place (`domain/format`). Light and dark follow the system, with a toggle in the sidebar.
+- **States**: every table has a skeleton for its first load, an empty state that says what the view is for and points to the next step, and the inline error. Times read relative ("5m ago") with the absolute time on hover. Times and counts are formatted in `domain/format`, and retry countdowns in `domain/deliveryProgress`. Light and dark follow the system, with a toggle in the sidebar.
 - **Optimistic replay**: the row flips to `pending` immediately and rolls back with a toast if the request fails.
 - **Accessibility**:
   - status badges use color, an icon, and text, never color alone;
-  - rows expand from the keyboard and the slideover traps focus.
+  - delivery rows open their slideover from the keyboard (Enter or Space), and the slideover traps focus.
 - Desktop-first: an ops dashboard, with no mobile layout.
 
 ### Staying accurate over time
@@ -111,13 +111,13 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
 - Every view reads the DB, which is also the queue, so there's no second source of truth to drift.
 - Making "live" visible:
   - rows briefly highlight when their status changes;
-  - a "live · updated 2s ago" indicator shows polling health and turns into an error state when polls fail;
+  - a "Live · updated just now" indicator shows polling health and turns into "Updates failing" with a Retry button when polls fail;
   - polling pauses while the browser tab is hidden and refetches when it becomes visible.
 
 ### Dashboard
 
 - **Endpoints**: list, create (signing secret shown once in a modal), enable/disable, and "replay failed" per endpoint. The button shows the count ("Replay 3 failed") and is disabled at zero, so it never offers an action that does nothing; the list polls every 5s so the count keeps up.
-- **Events**: trigger form with a type picker and a JSON editor prefilled with a sample payload per type. The editor validates JSON live and has a "format" button. The idempotency key persists until the input changes or the user clicks "new key", so resubmitting visibly dedupes. "The input" means the type and the parsed data, so reformatting keeps the key. The key is editable, which is how a reused key's 422 is reached and shown inline. Below it, the newest 20 events (`GET /events`) with fan-out counts, each linking to `/deliveries?event=<id>`.
+- **Events**: trigger form with a type picker and a JSON editor prefilled with a sample payload per type. The editor validates JSON live and has a "format" button. The idempotency key persists until the input changes or the user clicks "new key", so resubmitting visibly dedupes. "The input" means the type and the parsed data, so reformatting keeps the key. The key is editable, which is how a reused key's 422 is reached and shown inline. Below it, the newest 20 events (`GET /events`, polled every 5s) with fan-out counts, each linking to `/deliveries?event=<id>`.
 - **Deliveries**: live table filtered by status and endpoint, with the filters held in the URL (`?status=failed&endpoint=…`) so views can be deep-linked and the back button works. `?event=…` narrows it to one event (the Events view's drill-down), and `?delivery=…` opens that delivery's slideover. It has status count chips and the newest 50 plus keyset "load more". Pending rows show "attempt 3/6 · next in 12s" (from `next_attempt_at`) and failed rows show their failure reason. Opening a delivery shows a slideover with its own URL, containing the payload, the attempt log, and Replay.
 
 ### Tests
@@ -132,7 +132,7 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
   - disable failing pending deliveries, graceful-shutdown lease release.
 - **Vitest** (`@nuxt/test-utils` + MSW handlers typed from the OpenAPI schema):
   - `ApiError` normalization;
-  - polling stops once every delivery is terminal and resumes when one isn't;
+  - polling backs off once every delivery is terminal and speeds up again when one isn't;
   - every loaded page refreshes;
   - optimistic replay rolls back on error;
   - the trigger form shows the dedup notice and the 422 mismatch;
@@ -140,19 +140,19 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
 
 ### Requirement traceability
 
-Planned now; file and test links get filled in during the final docs-vs-code pass.
+Each requirement in the brief, the mechanism that meets it, and the tests that prove it. Checked against the code in the final docs pass.
 
 | Requirement (brief) | Mechanism | Proven by |
 |---|---|---|
-| Configurable subscriptions | Endpoint with a set of event types; fan-out by type | pytest: fan-out |
+| Configurable subscriptions | Endpoint with a set of event types; fan-out by type | pytest: fan-out to enabled, subscribed endpoints only ([test_events_api.py](../backend/tests/test_events_api.py)); endpoint creation and validation ([test_endpoints_api.py](../backend/tests/test_endpoints_api.py)) |
 | Reliable delivery | DB queue, backoff with jitter, leases | pytest: retry policy ([test_retry_policy.py](../backend/tests/test_retry_policy.py)); retry to success and exhaustion, 410, `Retry-After`, fencing, lease reclaim, the pool, shutdown ([test_worker.py](../backend/tests/test_worker.py)) |
 | Authenticated delivery | Standard Webhooks HMAC | pytest: signing + `standardwebhooks` interop ([test_signing.py](../backend/tests/test_signing.py)); mock receiver verification ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)) |
 | Replay-able failures | Failure reason + Replay / replay-failed | pytest: replay, replay-failed, 409s, flaky → failed → replay → succeeded ([test_replay.py](../backend/tests/test_replay.py)); disable and the claim re-check ([test_disable.py](../backend/tests/test_disable.py)); mock modes ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)) |
 | Unique delivery | Idempotency-Key, unique (event, endpoint), stable `webhook-id` | pytest: idempotency, constraint (resubmit, 422 mismatch, concurrent resubmit, and unique constraint: [test_events_api.py](../backend/tests/test_events_api.py), [test_app.py](../backend/tests/test_app.py)) |
-| Observable delivery | Deliveries view, attempt log | pytest: filters, keyset paging, counts ([test_deliveries_api.py](../backend/tests/test_deliveries_api.py)); Vitest: URL ↔ filter sync, slideover deep link ([deliveriesPage.test.ts](../frontend/test/nuxt/deliveriesPage.test.ts)) |
-| Endpoint management, secret once | Endpoints view | Vitest: secret gone from the page and every cache after the modal closes, inline URL validation ([createEndpointModal.test.ts](../frontend/test/nuxt/createEndpointModal.test.ts)); disable refetches deliveries, per-row in-flight state, replay-failed ([endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)), the failed count on "Replay failed" and disabled at zero ([endpointsPage.test.ts](../frontend/test/nuxt/endpointsPage.test.ts)); pytest: failed counts per endpoint ([test_replay.py](../backend/tests/test_replay.py)) |
+| Observable delivery | Deliveries view, attempt log | pytest: filters, keyset paging, counts ([test_deliveries_api.py](../backend/tests/test_deliveries_api.py)); Vitest: URL ↔ filter sync, slideover deep link ([deliveriesPage.test.ts](../frontend/test/nuxt/deliveriesPage.test.ts), [useQueryParam.test.ts](../frontend/test/nuxt/useQueryParam.test.ts)) |
+| Endpoint management, secret once | Endpoints view | Vitest: secret gone from the page and every cache after the modal closes, inline URL validation ([createEndpointModal.test.ts](../frontend/test/nuxt/createEndpointModal.test.ts), [endpointUrl.test.ts](../frontend/test/unit/endpointUrl.test.ts)); disable refetches deliveries, per-row in-flight state, replay-failed ([endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)), the failed count on "Replay failed" and disabled at zero ([endpointsPage.test.ts](../frontend/test/nuxt/endpointsPage.test.ts)); pytest: failed counts per endpoint ([test_replay.py](../backend/tests/test_replay.py)) |
 | Event trigger, dedup surfaced | Trigger form, `GET /events` | Vitest: key lifecycle, dedup notice, 422 mismatch inline, invalid JSON blocked ([triggerEventForm.test.ts](../frontend/test/nuxt/triggerEventForm.test.ts), [useIdempotencyKey.test.ts](../frontend/test/nuxt/useIdempotencyKey.test.ts), [eventData.test.ts](../frontend/test/unit/eventData.test.ts)); pytest: recent events with fan-out counts ([test_events_api.py](../backend/tests/test_events_api.py)) |
-| Live delivery view | Polling all loaded pages + detail | Vitest: polling backs off when terminal and resumes, every loaded page refreshes, detail polling ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)), countdown and highlights ([deliveryProgress.test.ts](../frontend/test/unit/deliveryProgress.test.ts)) |
+| Live delivery view | Polling all loaded pages + detail | Vitest: polling backs off when terminal and resumes, every loaded page refreshes, detail polling ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)), the countdown and which rows to highlight ([deliveryProgress.test.ts](../frontend/test/unit/deliveryProgress.test.ts)); the highlight's timing itself is untested; GIF of the live view ([live-deliveries.gif](./screenshots/live-deliveries.gif)) |
 | Attempt inspection, replay | Delivery slideover, optimistic replay | Vitest: optimistic replay and rollback ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)) |
 | Async UX, consistent errors | Vue Query composables, `ApiError`, `useLoadError` | Vitest `ApiError` ([api-errors.test.ts](../frontend/test/unit/api-errors.test.ts), [endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)), trigger form incl. the zero fan-out notice ([triggerEventForm.test.ts](../frontend/test/nuxt/triggerEventForm.test.ts)), a failed load's error surviving retries and key changes ([useLoadError.test.ts](../frontend/test/nuxt/useLoadError.test.ts)), time and count formatting ([format.test.ts](../frontend/test/unit/format.test.ts)); before/after screenshots ([docs/screenshots](./screenshots/)) |
 | API / state / UI separation | `api/`, `composables/`, components | Code layout; ESLint layering rule ([eslint.config.mjs](../frontend/eslint.config.mjs)); generated client checked against the backend schema in CI ([ci.yml](../.github/workflows/ci.yml)) |
@@ -170,12 +170,12 @@ The role is frontend-leaning, so the dashboard gets the extra depth, and the bac
 5. CI.
 6. **Final pass:** traceability links, a docs-vs-code check, a separate AI review session against `ASSIGNMENT.md`, and a README with a GIF of the live view and screenshots.
 
-If time runs short, cut in this order: CI, then the Events list (keeping the trigger form), then the count chips. The backend tests, the dashboard requirements, and the polish pass are never cut.
+If time ran short, the plan was to cut in this order: CI, then the Events list (keeping the trigger form), then the count chips. None of them had to go. The one planned item that was cut is the Playwright e2e suite with its axe checks (see "With more time").
 
 ## Deliberately cut
 
 - **Auth and multi-tenancy**: single implicit customer. The brief requires neither.
-- **A named fast "demo" retry profile**: the retry env vars are documented instead.
+- **A named fast "demo" retry profile**: the retry env vars are documented in the [README](../README.md) instead.
 - **Endpoint edit/delete**, secret rotation, per-type payload schemas.
 - **Pause/hold semantics** for endpoints ([ADR 0003](./adr/0003-disable-fails-pending-deliveries.md)), and time-ranged recovery ("replay since T").
 - **Alembic migrations**, data retention/cleanup.
