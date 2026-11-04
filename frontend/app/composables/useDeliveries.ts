@@ -13,7 +13,7 @@ type DeliveryPage = Schemas['DeliveryPage']
 const isLive = (delivery: Delivery) => !deliveryStatuses[delivery.status].terminal
 
 function toQuery(filters: DeliveryFilters) {
-  return { endpoint_id: filters.endpointId, event_id: filters.eventId }
+  return { status: filters.status, endpoint_id: filters.endpointId, event_id: filters.eventId }
 }
 
 /**
@@ -25,7 +25,7 @@ export function useDeliveries(filters: MaybeRefOrGetter<DeliveryFilters> = {}) {
   const query = useInfiniteQuery({
     queryKey: computed(() => queryKeys.deliveries.list(toValue(filters))),
     queryFn: ({ queryKey: [, , filters], pageParam, signal }) => unwrap(api.GET('/deliveries', {
-      params: { query: { ...toQuery(filters), status: filters.status, cursor: pageParam ?? undefined } },
+      params: { query: { ...toQuery(filters), cursor: pageParam ?? undefined } },
       signal
     })),
     initialPageParam: null as string | null,
@@ -60,16 +60,23 @@ export function useDeliveryCounts(filters: MaybeRefOrGetter<DeliveryFilters> = {
   })
 }
 
-/** One delivery with its payload and attempt log, polled on its own until it is terminal. */
-export function useDelivery(deliveryId: MaybeRefOrGetter<string | undefined>) {
+/**
+ * One delivery with its payload and attempt log, polled on its own while `active`: fast while it can
+ * change by itself, slowly once failed (a replay from elsewhere can still revive it), not once succeeded.
+ */
+export function useDelivery(deliveryId: MaybeRefOrGetter<string | undefined>, active: MaybeRefOrGetter<boolean> = true) {
   return useQuery({
     queryKey: computed(() => queryKeys.deliveries.detail(toValue(deliveryId) ?? '')),
     queryFn: ({ queryKey: [, , deliveryId], signal }) => unwrap(api.GET('/deliveries/{delivery_id}', {
       params: { path: { delivery_id: deliveryId } },
       signal
     })),
-    enabled: computed(() => Boolean(toValue(deliveryId))),
-    refetchInterval: query => query.state.data && isLive(query.state.data) ? DELIVERIES_POLL_MS.active : false
+    enabled: computed(() => Boolean(toValue(deliveryId)) && toValue(active)),
+    refetchInterval: (query) => {
+      const delivery = query.state.data
+      if (!delivery || delivery.status === 'succeeded') return false
+      return isLive(delivery) ? DELIVERIES_POLL_MS.active : DELIVERIES_POLL_MS.idle
+    }
   })
 }
 
@@ -79,6 +86,11 @@ export function useDelivery(deliveryId: MaybeRefOrGetter<string | undefined>) {
  */
 export function useReplayDelivery() {
   const queryClient = useQueryClient()
+  const setDeliveryInLists = (deliveryId: string, update: (delivery: Delivery) => Delivery) =>
+    queryClient.setQueriesData<InfiniteData<DeliveryPage>>({ queryKey: queryKeys.deliveries.lists() }, data => data && {
+      ...data,
+      pages: data.pages.map(page => ({ ...page, items: page.items.map(d => d.id === deliveryId ? update(d) : d) }))
+    })
   return useMutation({
     mutationFn: (deliveryId: string) => unwrap(api.POST('/deliveries/{delivery_id}/replay', {
       params: { path: { delivery_id: deliveryId } }
@@ -91,21 +103,20 @@ export function useReplayDelivery() {
         queryClient.cancelQueries({ queryKey: listsKey }),
         queryClient.cancelQueries({ queryKey: detailKey })
       ])
-      const lists = queryClient.getQueriesData<InfiniteData<DeliveryPage>>({ queryKey: listsKey })
+      const row = queryClient.getQueriesData<InfiniteData<DeliveryPage>>({ queryKey: listsKey })
+        .flatMap(([, data]) => data?.pages.flatMap(page => page.items) ?? [])
+        .find(delivery => delivery.id === deliveryId)
       const detail = queryClient.getQueryData<DeliveryDetail>(detailKey)
 
-      const replayed = <T extends Delivery>(delivery: T): T => delivery.id === deliveryId
-        ? { ...delivery, status: 'pending', failure_reason: null, attempts_used: 0, next_attempt_at: new Date().toISOString() }
-        : delivery
-      queryClient.setQueriesData<InfiniteData<DeliveryPage>>({ queryKey: listsKey }, data => data && {
-        ...data,
-        pages: data.pages.map(page => ({ ...page, items: page.items.map(replayed) }))
-      })
+      const replayed = <T extends Delivery>(delivery: T): T =>
+        ({ ...delivery, status: 'pending', failure_reason: null, attempts_used: 0, next_attempt_at: new Date().toISOString() })
+      setDeliveryInLists(deliveryId, replayed)
       if (detail) queryClient.setQueryData(detailKey, replayed(detail))
-      return { lists, detail }
+      return { row, detail }
     },
+    // Only the replayed delivery goes back; other rows keep whatever polls brought in meanwhile.
     onError: (_error, deliveryId, context) => {
-      for (const [queryKey, data] of context?.lists ?? []) queryClient.setQueryData(queryKey, data)
+      if (context?.row) setDeliveryInLists(deliveryId, () => context.row!)
       if (context?.detail) queryClient.setQueryData(queryKeys.deliveries.detail(deliveryId), context.detail)
     },
     onSuccess: detail => queryClient.setQueryData(queryKeys.deliveries.detail(detail.id), detail),

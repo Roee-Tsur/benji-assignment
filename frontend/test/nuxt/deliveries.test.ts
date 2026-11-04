@@ -99,6 +99,33 @@ describe('useDeliveries polling', () => {
     await vi.advanceTimersByTimeAsync(DELIVERIES_POLL_MS.idle * 2)
     expect(requests).toBe(2)
   })
+
+  it('keeps polling a failed delivery\'s detail slowly, since a replay from elsewhere can revive it', async () => {
+    let requests = 0
+    server.use(http.get('/deliveries/{delivery_id}', ({ response }) => {
+      requests++
+      return response(200).json(deliveryDetail({ status: 'failed' }))
+    }))
+    await withSetup(() => useDelivery('dlv_1'))
+    await vi.waitFor(() => expect(requests).toBe(1))
+
+    await vi.advanceTimersByTimeAsync(DELIVERIES_POLL_MS.active)
+    expect(requests).toBe(1)
+    await vi.advanceTimersByTimeAsync(DELIVERIES_POLL_MS.idle - DELIVERIES_POLL_MS.active)
+    expect(requests).toBe(2)
+  })
+
+  it('doesn\'t poll a detail that isn\'t active', async () => {
+    let requests = 0
+    server.use(http.get('/deliveries/{delivery_id}', ({ response }) => {
+      requests++
+      return response(200).json(deliveryDetail({ status: 'pending' }))
+    }))
+    await withSetup(() => useDelivery('dlv_1', false))
+
+    await vi.advanceTimersByTimeAsync(DELIVERIES_POLL_MS.idle)
+    expect(requests).toBe(0)
+  })
 })
 
 describe('useDeliveries filters', () => {

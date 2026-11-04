@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useNow } from '@vueuse/core'
 import type { ApiError } from '~/api/errors'
 import { formatDuration } from '~/domain/deliveryProgress'
 
@@ -11,7 +10,7 @@ const props = defineProps<{
 }>()
 defineEmits<{ retry: [] }>()
 
-const now = useNow({ interval: 1000 })
+const now = useClock()
 const ago = computed(() => `updated ${formatDuration((now.value.getTime() - props.updatedAt) / 1000)} ago`)
 </script>
 

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useNow } from '@vueuse/core'
 import { deliveryProgress } from '~/domain/deliveryProgress'
 import { eventTypes } from '~/domain/eventTypes'
 
@@ -18,10 +17,11 @@ const open = computed({
   }
 })
 
-const detail = useDelivery(shownId)
+// Polls only while open; the cached detail stays on screen through the close animation.
+const detail = useDelivery(shownId, open)
 const replay = useReplayDelivery()
 const replaying = computed(() => replay.isPending.value && replay.variables.value === shownId.value)
-const now = useNow({ interval: 1000 })
+const now = useClock()
 </script>
 
 <template>

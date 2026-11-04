@@ -3,7 +3,8 @@ import { statusChanges } from '~/domain/deliveryProgress'
 
 /**
  * Ids of the deliveries whose status changed within the last `ms`, so their rows can flash.
- * A delivery seen for the first time (on load, a new filter, or a new page) isn't a change.
+ * A delivery not shown last time (on load, a new filter, or a new page) isn't a change, so a row
+ * that changed while filtered out doesn't flash when it comes back.
  */
 export function useStatusHighlights(deliveries: () => readonly Delivery[], ms = 1500): Readonly<Ref<ReadonlySet<string>>> {
   const seen = new Map<string, DeliveryStatus>()
@@ -17,6 +18,7 @@ export function useStatusHighlights(deliveries: () => readonly Delivery[], ms = 
 
   watch(deliveries, (rows) => {
     const changed = statusChanges(seen, rows)
+    seen.clear()
     for (const row of rows) seen.set(row.id, row.status)
     if (changed.length === 0) return
     highlighted.value = new Set([...highlighted.value, ...changed])

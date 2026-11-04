@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import { useNow } from '@vueuse/core'
 import type { Delivery, DeliveryStatus } from '~/api/client'
 import type { DeliveryFilters } from '~/api/queryKeys'
-import { deliveryProgress } from '~/domain/deliveryProgress'
 import { deliveryStatuses } from '~/domain/deliveryStatus'
 import { eventTypes } from '~/domain/eventTypes'
 
@@ -28,7 +26,6 @@ const deliveries = useDeliveries(filters)
 const counts = useDeliveryCounts(filters)
 const endpoints = useEndpoints()
 const highlighted = useStatusHighlights(() => deliveries.deliveries.value)
-const now = useNow({ interval: 1000 })
 
 // Select items can't hold `undefined`, so "All endpoints" is a sentinel.
 const ALL = 'all'
@@ -58,9 +55,10 @@ const columns: TableColumn<Delivery>[] = [
     <template #header>
       <UDashboardNavbar title="Deliveries">
         <template #right>
+          <!-- Only a failed poll counts; a failed "load more" is shown at the button. -->
           <DeliveriesLiveIndicator
             :updated-at="deliveries.dataUpdatedAt.value"
-            :error="deliveries.error.value"
+            :error="deliveries.isRefetchError.value ? deliveries.error.value : null"
             @retry="deliveries.refetch()"
           />
         </template>
@@ -136,10 +134,7 @@ const columns: TableColumn<Delivery>[] = [
             <DeliveryStatusBadge :status="row.original.status" />
           </template>
           <template #progress-cell="{ row }">
-            <span
-              class="text-sm tabular-nums"
-              :class="row.original.status === 'failed' ? 'text-error' : 'text-muted'"
-            >{{ deliveryProgress(row.original, now.getTime()) }}</span>
+            <DeliveriesProgress :delivery="row.original" />
           </template>
           <template #event_type-cell="{ row }">
             {{ eventTypes[row.original.event_type].label }}
@@ -164,8 +159,14 @@ const columns: TableColumn<Delivery>[] = [
           </template>
         </UTable>
 
+        <QueryError
+          v-if="deliveries.isFetchNextPageError.value && deliveries.error.value"
+          class="mt-4"
+          :error="deliveries.error.value"
+          @retry="deliveries.fetchNextPage()"
+        />
         <div
-          v-if="deliveries.hasNextPage.value"
+          v-else-if="deliveries.hasNextPage.value"
           class="flex justify-center py-4"
         >
           <UButton
