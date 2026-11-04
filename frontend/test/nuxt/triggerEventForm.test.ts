@@ -14,7 +14,7 @@ afterEach(() => {
 })
 
 /** A fake `POST /events` with the real dedup rule (same key → the original event), recording each request. */
-function acceptEvents() {
+function acceptEvents({ deliveryCount = 2 } = {}) {
   const submissions: { key: string, data: unknown }[] = []
   const originals = new Map<string, EventSubmitted>()
   server.use(http.post('/events', async ({ request, response }) => {
@@ -29,7 +29,7 @@ function acceptEvents() {
       data: body.data,
       idempotency_key: key,
       created_at: '2026-11-04T10:00:00Z',
-      delivery_count: 2,
+      delivery_count: deliveryCount,
       deduplicated: false
     }
     originals.set(key, created)
@@ -62,6 +62,17 @@ describe('TriggerEventForm', () => {
     expect(submissions[1]!.key).toBe(submissions[0]!.key)
     await expect.poll(() => wrapper.text()).toContain('Duplicate submission')
     expect(wrapper.text()).toContain('No new deliveries were created')
+  })
+
+  it('says when an event fanned out to no deliveries, and points at the endpoints', async () => {
+    const submissions = acceptEvents({ deliveryCount: 0 })
+    const wrapper = await mountSuspended(TriggerEventForm)
+
+    await submit(wrapper, submissions)
+
+    await expect.poll(() => wrapper.text()).toContain('Event triggered, but nothing to deliver')
+    expect(wrapper.text()).toContain('No enabled endpoint is subscribed to reward transaction created events')
+    expect(wrapper.find('a[href="/endpoints"]').exists()).toBe(true)
   })
 
   it('replaces the key when the data changes, but not when it is only reformatted', async () => {

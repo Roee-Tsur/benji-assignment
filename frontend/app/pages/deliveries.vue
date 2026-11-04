@@ -56,10 +56,10 @@ const columns: TableColumn<Delivery>[] = [
     <template #header>
       <UDashboardNavbar title="Deliveries">
         <template #right>
-          <!-- Only a failed poll counts; a failed "load more" is shown at the button. -->
+          <!-- Only a failed poll or first load counts; a failed "load more" is shown at the button. -->
           <DeliveriesLiveIndicator
             :updated-at="deliveries.dataUpdatedAt.value"
-            :error="deliveries.isRefetchError.value ? deliveries.error.value : null"
+            :error="deliveries.isRefetchError.value ? deliveries.error.value : loadError"
             @retry="deliveries.refetch()"
           />
         </template>

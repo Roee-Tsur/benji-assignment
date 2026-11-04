@@ -33,9 +33,9 @@ const now = useClock()
     description="Payload and attempt log; updates live until the delivery is final."
     :ui="{ content: 'max-w-2xl', title: 'pe-8' }"
   >
-    <!-- A full id is long: it wraps under the heading rather than running into the close button. -->
+    <!-- A full id is long: it gets its own line under the heading rather than running into the close button. -->
     <template #title>
-      Delivery <span class="font-mono text-sm font-normal break-all text-muted">{{ shownId }}</span>
+      Delivery <span class="block font-mono text-xs font-normal text-muted">{{ shownId }}</span>
     </template>
 
     <template #body>
