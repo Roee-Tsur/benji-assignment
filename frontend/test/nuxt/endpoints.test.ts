@@ -1,5 +1,5 @@
 import { HttpResponse } from 'msw'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import { ApiError } from '../../app/api/errors'
 import { endpoint } from '../msw/fixtures'
 import { http } from '../msw/http'
@@ -16,7 +16,7 @@ describe('useEndpoints', () => {
     await expect.poll(() => endpoints.data.value).toEqual([endpoint])
   })
 
-  it('retries a server error, then exposes it as an ApiError', { timeout: 10_000 }, async () => {
+  it('retries a server error, then exposes it as an ApiError', async () => {
     let requests = 0
     server.use(http.get('/endpoints', ({ response }) => {
       requests++
@@ -26,9 +26,13 @@ describe('useEndpoints', () => {
         { status: 500, headers: { 'content-type': 'application/problem+json' } }
       ))
     }))
+    const queryClient = useNuxtApp().$queryClient
+    const defaults = queryClient.getDefaultOptions()
+    queryClient.setDefaultOptions({ ...defaults, queries: { ...defaults.queries, retryDelay: 0 } })
+    onTestFinished(() => queryClient.setDefaultOptions(defaults))
     const endpoints = await withSetup(() => useEndpoints())
 
-    await expect.poll(() => endpoints.error.value, { timeout: 8000 }).toBeInstanceOf(ApiError)
+    await expect.poll(() => endpoints.error.value).toBeInstanceOf(ApiError)
     expect(endpoints.error.value).toMatchObject({ kind: 'problem', status: 500 })
     expect(requests).toBe(3)
   })

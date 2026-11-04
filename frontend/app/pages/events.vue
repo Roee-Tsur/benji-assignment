@@ -30,12 +30,17 @@ function validate(): FormError[] {
   return parseData(state.json) ? [] : [{ name: 'json', message: 'Enter a JSON object.' }]
 }
 
-async function submit() {
-  submitted.value = await triggerEvent.mutateAsync({
+function submit() {
+  submitted.value = undefined
+  triggerEvent.mutate({
     type: state.type,
     data: parseData(state.json)!,
     // A fresh key per submit for now; a key that persists for visible dedup is #7.
     idempotencyKey: crypto.randomUUID()
+  }, {
+    onSuccess: (event) => {
+      submitted.value = event
+    }
   })
 }
 </script>

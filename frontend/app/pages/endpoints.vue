@@ -37,7 +37,7 @@ const columns: TableColumn<Endpoint>[] = [
         @retry="endpoints.refetch()"
       />
       <UTable
-        v-else
+        v-if="endpoints.data.value || !endpoints.error.value"
         :data="endpoints.data.value ?? []"
         :columns="columns"
         :loading="endpoints.isPending.value"

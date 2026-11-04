@@ -5,6 +5,7 @@ import { eventTypeOptions } from '~/domain/eventTypes'
 
 const open = defineModel<boolean>('open', { required: true })
 
+const toast = useToast()
 const createEndpoint = useCreateEndpoint()
 const state = reactive({
   url: 'http://127.0.0.1:8000/mock/ok',
@@ -17,14 +18,24 @@ function validate(): FormError[] {
   return state.eventTypes.length === 0 ? [{ name: 'eventTypes', message: 'Pick at least one event type.' }] : []
 }
 
-async function submit() {
-  created.value = await createEndpoint.mutateAsync({ url: state.url, event_types: state.eventTypes })
+// `mutate`, not `mutateAsync`: failures are already toasted, and its callback is dropped
+// if the modal closes (and resets the mutation) before the response arrives.
+function submit() {
+  createEndpoint.mutate({ url: state.url, event_types: state.eventTypes }, {
+    onSuccess: (endpoint) => {
+      created.value = endpoint
+    }
+  })
 }
 
 async function copySecret() {
   if (!created.value) return
-  await navigator.clipboard.writeText(created.value.secret)
-  copied.value = true
+  try {
+    await navigator.clipboard.writeText(created.value.secret)
+    copied.value = true
+  } catch {
+    toast.add({ title: 'Couldn\'t copy the secret', description: 'Select it and copy it manually.', color: 'error' })
+  }
 }
 
 // The secret is dropped on close: it is shown once and never again.

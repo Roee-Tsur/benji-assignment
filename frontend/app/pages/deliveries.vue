@@ -29,7 +29,7 @@ const columns: TableColumn<Delivery>[] = [
         @retry="deliveries.refetch()"
       />
       <UTable
-        v-else
+        v-if="deliveries.data.value || !deliveries.error.value"
         :data="deliveries.data.value ?? []"
         :columns="columns"
         :loading="deliveries.isPending.value"
