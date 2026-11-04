@@ -12,7 +12,7 @@ One session works one ticket. The argument is the GitHub issue number. If none w
 
 1. `gh issue view <N>`: scope, out of scope, acceptance criteria, and dependencies.
 2. Check that every issue this one depends on is closed (`gh issue view <dep>`). If one isn't, stop and tell the user.
-3. Read `CLAUDE.md`, `docs/PLAN.md`, `GLOSSARY.md`, and `docs/adr/`. Read code only in the areas the ticket touches. Use an Explore subagent for wide searches, to keep this context lean.
+3. Read `AGENTS.md`, `docs/PLAN.md`, `GLOSSARY.md`, and `docs/adr/`. Read code only in the areas the ticket touches. Use an Explore subagent for wide searches, to keep this context lean.
 4. Restate the ticket to the user in a few lines: what you'll build and how you'll verify each acceptance criterion. Flag anything in the ticket that conflicts with the plan, the glossary, or the existing code, and wait for the user to settle it before building.
 
 ## 2. Set up
@@ -34,7 +34,7 @@ One session works one ticket. The argument is the GitHub issue number. If none w
 
 ## 5. Keep docs true
 
-- If a decision changed or was made, update `docs/PLAN.md`, the glossary, or an ADR (see `CLAUDE.md`).
+- If a decision changed or was made, update `docs/PLAN.md`, the glossary, or an ADR (see `AGENTS.md`).
 - Update the requirement traceability table in `docs/PLAN.md` for any requirement this ticket proves.
 - Append a short session entry to `docs/AI_USAGE.md` in the existing format: what was asked, where the user steered or overrode, and the output. A few bullets; it is not a changelog.
 

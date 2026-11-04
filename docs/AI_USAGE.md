@@ -132,3 +132,10 @@ Tooling: Claude Code (Opus) in the desktop app.
   It fixed the docs, plus one UI string that said "Retry" where the glossary says "Replay". For the GIF, it recorded the dashboard with Playwright from a scratch script, so Playwright stayed out of the repo. It ran the app from a throwaway clone on separate ports, so my own dev servers kept running.
 - **Checks:** from a fresh clone, following only the README: install, `make lint typecheck test` (158 pytest and 101 Vitest tests), and the app running with the fast retry settings.
 - **Output:** [README.md](../README.md), [live-deliveries.gif](./screenshots/live-deliveries.gif), and PLAN.md checked against the code, with the traceability links filled in.
+
+### 14. Cursor support (2026-11-04)
+
+- **Asked:** the Benji team works in Cursor, not Claude Code. What should change so the repo works well for them locally?
+- **Process:** the AI checked the repo for Claude-only pieces. Running the app (README, Makefile, CI) had none, only `CLAUDE.md` and the `work-ticket` skill. It proposed four changes.
+- **Where I steered:** I took two of them: the shared instructions file and the editor config. I dropped the one that would have marked my own workflow rules (AI usage log, one PR per ticket) as author-only. Reviewers will read and run the code, not write to the repo.
+- **Output:** the instructions moved to `AGENTS.md`, which Cursor reads, and `CLAUDE.md` now imports it with `@AGENTS.md`, so there is still one source. `.vscode/` (Cursor reads it too) recommends the Python, Ruff, Vue, ESLint and Tailwind extensions, points at `backend/.venv`, and runs ruff and ESLint fixes on save.
