@@ -5,7 +5,8 @@ export const endpoint: Endpoint = {
   url: 'http://127.0.0.1:8000/mock/ok',
   event_types: ['reward_transaction_created'],
   enabled: true,
-  created_at: '2026-11-04T10:00:00Z'
+  created_at: '2026-11-04T10:00:00Z',
+  failed_count: 0
 }
 
 export function delivery(overrides: Partial<Delivery> = {}): Delivery {

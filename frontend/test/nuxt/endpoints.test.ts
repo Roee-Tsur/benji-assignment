@@ -97,13 +97,13 @@ describe('useSetEndpointEnabled', () => {
 })
 
 describe('useReplayFailed', () => {
-  it('resolves to the replayed count and invalidates deliveries', async () => {
+  it('resolves to the replayed count and invalidates deliveries and the failed counts', async () => {
     server.use(http.post('/endpoints/{endpoint_id}/replay-failed', ({ response }) => response(200).json({ replayed: 3 })))
     const invalidated = spyOnInvalidation()
     const replayFailed = await withSetup(() => useReplayFailed())
 
     await expect(replayFailed.mutateAsync({ endpointId: endpoint.id })).resolves.toEqual({ replayed: 3 })
 
-    expect(invalidated()).toContainEqual(queryKeys.deliveries.all)
+    expect(invalidated()).toEqual(expect.arrayContaining([queryKeys.endpoints.all, queryKeys.deliveries.all]))
   })
 })

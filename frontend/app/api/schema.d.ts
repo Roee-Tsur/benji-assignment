@@ -8,7 +8,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Endpoints */
+        /**
+         * List Endpoints
+         * @description Newest first, with their failed-delivery counts.
+         */
         get: operations["list_endpoints"];
         put?: never;
         /** Create Endpoint */
@@ -355,6 +358,27 @@ export interface components {
              */
             secret: string;
         };
+        /** EndpointListed */
+        EndpointListed: {
+            /** Id */
+            id: string;
+            /** Url */
+            url: string;
+            /** Event Types */
+            event_types: components["schemas"]["EventType"][];
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Failed Count
+             * @description How many of its deliveries are failed: what replay-failed would retry.
+             */
+            failed_count: number;
+        };
         /** EndpointOut */
         EndpointOut: {
             /** Id */
@@ -510,7 +534,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EndpointOut"][];
+                    "application/json": components["schemas"]["EndpointListed"][];
                 };
             };
         };

@@ -3,10 +3,15 @@ import { api, type Schemas } from '~/api/client'
 import { unwrap } from '~/api/errors'
 import { queryKeys } from '~/api/queryKeys'
 
+/** Poll slowly, so failed counts follow deliveries that fail while the page is open. */
+export const ENDPOINTS_POLL_MS = 5000
+
+/** Newest first, each with its failed-delivery count. */
 export function useEndpoints() {
   return useQuery({
     queryKey: queryKeys.endpoints.list(),
-    queryFn: ({ signal }) => unwrap(api.GET('/endpoints', { signal }))
+    queryFn: ({ signal }) => unwrap(api.GET('/endpoints', { signal })),
+    refetchInterval: ENDPOINTS_POLL_MS
   })
 }
 
@@ -46,14 +51,17 @@ export function useSetEndpointEnabled() {
   return { ...mutation, isPendingFor: usePendingEndpointIds(queryKeys.endpoints.setEnabled()) }
 }
 
-/** Replays every failed delivery of an endpoint; resolves to how many went back to pending. */
+/** Replays every failed delivery of an endpoint; resolves to how many went back to pending. Refetches the endpoints' failed counts too. */
 export function useReplayFailed() {
   const queryClient = useQueryClient()
   const mutation = useMutation({
     mutationKey: queryKeys.endpoints.replayFailed(),
     mutationFn: ({ endpointId }: { endpointId: string }) =>
       unwrap(api.POST('/endpoints/{endpoint_id}/replay-failed', { params: { path: { endpoint_id: endpointId } } })),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.deliveries.all })
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.endpoints.all }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.deliveries.all })
+    ])
   })
   return { ...mutation, isPendingFor: usePendingEndpointIds(queryKeys.endpoints.replayFailed()) }
 }
