@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.db
+*.db-wal
+*.db-shm
+
+# Node / Nuxt
+node_modules/
+.nuxt/
+.output/
+dist/
+playwright-report/
+test-results/
+
+# Env / OS
+.env
+.DS_Store
