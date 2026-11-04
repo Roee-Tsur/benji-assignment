@@ -1,0 +1,3 @@
+# Sign deliveries per the Standard Webhooks spec
+
+Recipients need to trust that a request came from us. We follow the [Standard Webhooks](https://www.standardwebhooks.com/) spec instead of inventing a scheme. Each request carries `webhook-id`, `webhook-timestamp`, and `webhook-signature`, where the signature is HMAC-SHA256 over `{id}.{timestamp}.{body}`, keyed by a per-endpoint `whsec_` secret. The signature format is a contract with every receiver and expensive to change once partners integrate. A published spec gives receivers existing verification libraries, timestamp-based replay protection, and a defined header for key rotation later. `webhook-id` is the delivery's stable ID, so it doubles as the receiver's deduplication key across attempts and replays.
