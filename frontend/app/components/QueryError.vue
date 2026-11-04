@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import type { ApiError } from '~/api/errors'
 
-defineProps<{ error: ApiError }>()
+defineProps<{
+  error: ApiError
+  /** A fetch is underway (the retry, or a poll), so Retry shows it's working. */
+  retrying?: boolean
+}>()
 defineEmits<{ retry: [] }>()
 </script>
 
@@ -13,6 +17,6 @@ defineEmits<{ retry: [] }>()
     icon="i-lucide-circle-alert"
     :title="error.title"
     :description="error.message === error.title ? undefined : error.message"
-    :actions="[{ label: 'Retry', color: 'error', variant: 'outline', onClick: () => $emit('retry') }]"
+    :actions="[{ label: 'Retry', icon: 'i-lucide-refresh-cw', color: 'error', variant: 'outline', loading: retrying, onClick: () => $emit('retry') }]"
   />
 </template>

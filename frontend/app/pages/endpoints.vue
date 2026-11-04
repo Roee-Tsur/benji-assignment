@@ -2,10 +2,12 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { Endpoint } from '~/api/client'
 import { eventTypes } from '~/domain/eventTypes'
+import { formatCount } from '~/domain/format'
 
 useHead({ title: 'Endpoints' })
 
 const endpoints = useEndpoints()
+const loadError = useLoadError(endpoints)
 const setEnabled = useSetEndpointEnabled()
 const replayFailed = useReplayFailed()
 const toast = useToast()
@@ -22,7 +24,7 @@ function toggle(endpoint: Endpoint, enabled: boolean) {
 function replay(endpoint: Endpoint) {
   replayFailed.mutate({ endpointId: endpoint.id }, {
     onSuccess: ({ replayed }) => toast.add({
-      title: replayed === 0 ? 'No failed deliveries to replay' : `Replayed ${replayed} failed ${replayed === 1 ? 'delivery' : 'deliveries'}`,
+      title: replayed === 0 ? 'No failed deliveries to replay' : `Replayed ${formatCount(replayed, 'failed delivery', 'failed deliveries')}`,
       color: replayed === 0 ? 'neutral' : 'success',
       icon: 'i-lucide-rotate-ccw',
       actions: replayed === 0 ? undefined : [{ label: 'View deliveries', to: { path: '/deliveries', query: { endpoint: endpoint.id } } }]
@@ -55,17 +57,28 @@ const columns: TableColumn<Endpoint>[] = [
 
     <template #body>
       <QueryError
-        v-if="endpoints.error.value"
-        :error="endpoints.error.value"
+        v-if="loadError"
+        :error="loadError"
+        :retrying="endpoints.isFetching.value"
         @retry="endpoints.refetch()"
       />
       <UTable
-        v-if="endpoints.data.value || !endpoints.error.value"
+        v-else
         :data="endpoints.data.value ?? []"
         :columns="columns"
         :loading="endpoints.isPending.value"
-        empty="No endpoints yet. Create one to start receiving events."
       >
+        <template #empty>
+          <TableSkeleton v-if="endpoints.isPending.value" />
+          <UEmpty
+            v-else
+            variant="naked"
+            icon="i-lucide-webhook"
+            title="No endpoints yet"
+            description="An endpoint is a URL that receives a signed notification for each event type it subscribes to."
+            :actions="[{ label: 'New endpoint', icon: 'i-lucide-plus', onClick: () => { creating = true } }]"
+          />
+        </template>
         <template #url-cell="{ row }">
           <span class="font-mono text-sm">{{ row.original.url }}</span>
         </template>
@@ -91,11 +104,7 @@ const columns: TableColumn<Endpoint>[] = [
           />
         </template>
         <template #created_at-cell="{ row }">
-          <NuxtTime
-            :datetime="row.original.created_at"
-            date-style="medium"
-            time-style="short"
-          />
+          <RelativeTime :datetime="row.original.created_at" />
         </template>
         <template #actions-cell="{ row }">
           <UTooltip

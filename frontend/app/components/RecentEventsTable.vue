@@ -2,10 +2,12 @@
 import type { TableColumn } from '@nuxt/ui'
 import type { Event } from '~/api/client'
 import { eventTypes } from '~/domain/eventTypes'
+import { formatCount } from '~/domain/format'
 
 const events = useRecentEvents()
+const loadError = useLoadError(events)
 
-const fanOut = (count: number) => `${count} ${count === 1 ? 'delivery' : 'deliveries'}`
+const fanOut = (count: number) => formatCount(count, 'delivery', 'deliveries')
 
 const columns: TableColumn<Event>[] = [
   { accessorKey: 'type', header: 'Event type' },
@@ -23,31 +25,41 @@ const columns: TableColumn<Event>[] = [
   >
     <h2
       id="recent-events-heading"
-      class="font-semibold"
+      class="text-base font-semibold text-highlighted"
     >
       Recent events
     </h2>
     <QueryError
-      v-if="events.error.value"
-      :error="events.error.value"
+      v-if="loadError"
+      :error="loadError"
+      :retrying="events.isFetching.value"
       @retry="events.refetch()"
     />
     <UTable
-      v-if="events.data.value || !events.error.value"
+      v-else
       :data="events.data.value ?? []"
       :columns="columns"
       :loading="events.isPending.value"
-      empty="No events yet. Trigger one above."
     >
+      <template #empty>
+        <TableSkeleton v-if="events.isPending.value" />
+        <UEmpty
+          v-else
+          variant="naked"
+          icon="i-lucide-zap"
+          title="No events yet"
+          description="Trigger one with the form above, or POST to /events. Each one fans out to every enabled endpoint subscribed to its type."
+        />
+      </template>
       <template #type-cell="{ row }">
         {{ eventTypes[row.original.type].label }}
       </template>
       <template #id-cell="{ row }">
-        <span class="font-mono text-sm">{{ row.original.id }}</span>
+        <span class="font-mono text-xs">{{ row.original.id }}</span>
       </template>
       <template #idempotency_key-cell="{ row }">
         <span
-          class="block max-w-48 truncate font-mono text-sm text-muted"
+          class="block max-w-48 truncate font-mono text-xs text-muted"
           :title="row.original.idempotency_key"
         >
           {{ row.original.idempotency_key }}
@@ -64,11 +76,7 @@ const columns: TableColumn<Event>[] = [
         </ULink>
       </template>
       <template #created_at-cell="{ row }">
-        <NuxtTime
-          :datetime="row.original.created_at"
-          date-style="medium"
-          time-style="medium"
-        />
+        <RelativeTime :datetime="row.original.created_at" />
       </template>
     </UTable>
   </section>

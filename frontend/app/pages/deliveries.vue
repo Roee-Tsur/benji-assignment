@@ -26,6 +26,7 @@ const deliveries = useDeliveries(filters)
 const counts = useDeliveryCounts(filters)
 const endpoints = useEndpoints()
 const highlighted = useStatusHighlights(() => deliveries.deliveries.value)
+const loadError = useLoadError(deliveries)
 
 // Select items can't hold `undefined`, so "All endpoints" is a sentinel.
 const ALL = 'all'
@@ -94,8 +95,9 @@ const columns: TableColumn<Delivery>[] = [
 
     <template #body>
       <QueryError
-        v-if="deliveries.error.value && !deliveries.data.value"
-        :error="deliveries.error.value"
+        v-if="loadError"
+        :error="loadError"
+        :retrying="deliveries.isFetching.value"
         @retry="deliveries.refetch()"
       />
       <template v-else>
@@ -110,25 +112,23 @@ const columns: TableColumn<Delivery>[] = [
           @select="(_event, row) => openDeliveryId = row.original.id"
         >
           <template #empty>
-            <div
-              v-if="filtered"
-              class="space-y-2"
-            >
-              <p>No deliveries match these filters.</p>
-              <UButton
-                label="Clear filters"
-                color="neutral"
-                variant="outline"
-                size="sm"
-                @click="clearFilters"
-              />
-            </div>
-            <p v-else>
-              No deliveries yet. <ULink
-                to="/events"
-                class="text-primary"
-              >Trigger an event</ULink> to create some.
-            </p>
+            <TableSkeleton v-if="deliveries.isPending.value" />
+            <UEmpty
+              v-else-if="filtered"
+              variant="naked"
+              icon="i-lucide-filter-x"
+              title="No deliveries match these filters"
+              description="Try another status or endpoint, or clear the filters to see every delivery."
+              :actions="[{ label: 'Clear filters', icon: 'i-lucide-x', color: 'neutral', variant: 'outline', onClick: clearFilters }]"
+            />
+            <UEmpty
+              v-else
+              variant="naked"
+              icon="i-lucide-send"
+              title="No deliveries yet"
+              description="Each event creates one delivery per enabled endpoint subscribed to its type."
+              :actions="[{ label: 'Trigger an event', icon: 'i-lucide-zap', to: '/events' }, { label: 'Add an endpoint', icon: 'i-lucide-plus', color: 'neutral', variant: 'outline', to: '/endpoints' }]"
+            />
           </template>
           <template #status-cell="{ row }">
             <DeliveryStatusBadge :status="row.original.status" />
@@ -143,16 +143,13 @@ const columns: TableColumn<Delivery>[] = [
             <span class="font-mono text-sm">{{ row.original.endpoint_url }}</span>
           </template>
           <template #created_at-cell="{ row }">
-            <NuxtTime
-              :datetime="row.original.created_at"
-              date-style="medium"
-              time-style="medium"
-            />
+            <RelativeTime :datetime="row.original.created_at" />
           </template>
           <template #id-cell="{ row }">
             <ULink
               :to="{ query: { ...route.query, delivery: row.original.id } }"
               class="font-mono text-xs"
+              :title="row.original.id"
             >
               {{ row.original.id.slice(0, 12) }}…
             </ULink>
