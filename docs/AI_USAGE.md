@@ -33,3 +33,11 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Review:** `/code-review` found 9 issues. It fixed 7: request errors other than transport errors left a delivery stuck `in progress`, problem responses dropped the `Allow` header, and 5 smaller cleanups. It skipped 2 that belong to later tickets: shutdown mid-attempt (#4) and the concurrent same-key race (#3).
 - **Output:** `backend/` (47 pytest tests, ruff, strict pyright) and root `Makefile` targets.
 
+
+### Ticket #3: retry policy + idempotency hardening (2026-11-04)
+
+- **Asked:** run `/work-ticket 3` in its own worktree, stacked on the unmerged #1 branch while #2 ran in parallel in the main checkout, and keep away from the shared `Makefile`.
+- **Process:** test-first. The retry policy got table-driven tests (jitter bounds, cap, every classification, `Retry-After` clamping and ignored HTTP-dates). The concurrent-resubmit test was run against the old check-then-insert code first and reproduced the `UNIQUE constraint` 500 before the insert-and-catch fix.
+- **Choices it made and flagged in the PR:** the 64 KiB limit measures the serialized envelope (what receivers get), a missing key is a 400 by declaring the header optional and checking it in the router, and `RetryPolicy` owns the attempt budget's size.
+- **Review:** `/code-review` found 7 issues. It fixed 5: `True == 1 == 1.0` let different payloads dedupe, bad retry settings failed per request instead of at startup, blank keys were accepted, other integrity errors were masked, and an odd `Retry-After` sentinel. It recorded the request-size guard under "With more time" and the PLAN wording under docs.
+- **Output:** `domain/retry_policy.py`, hardened `POST /events`, 107 pytest tests.

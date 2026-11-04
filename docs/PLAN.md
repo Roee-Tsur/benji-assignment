@@ -59,7 +59,7 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
 6. **Lease reclaim**: an expired lease is recorded as an `interrupted` attempt, which counts against the budget so a poison delivery can't loop forever. The delivery returns to `pending`.
 7. **Replay** (`POST /deliveries/{id}/replay`): a `failed` delivery returns to `pending` with a fresh attempt budget. Attempt numbers keep counting up and it keeps the same `webhook-id`. Replaying anything not `failed`, or a delivery whose endpoint is disabled, returns 409. `POST /endpoints/{id}/replay-failed` replays every failed delivery of an endpoint in one conditional `UPDATE`, for recovery after an outage.
 
-**Retry policy:** 6 attempts per budget, exponential backoff with full jitter (base 2s, cap 5min). `Retry-After` is honored in its delta-seconds form and clamped to the cap. Settings: `WEBHOOK_RETRY_MAX_ATTEMPTS`, `WEBHOOK_RETRY_BASE_SECONDS`, `WEBHOOK_RETRY_CAP_SECONDS`. The README shows the values that make retries visible in seconds; tests override them.
+**Retry policy:** 6 attempts per budget, exponential backoff with full jitter (base 2s, cap 5min). `Retry-After` is honored in its delta-seconds form and clamped to the cap. Settings: `WEBHOOK_RETRY_MAX_ATTEMPTS`, `WEBHOOK_RETRY_BASE_SECONDS`, `WEBHOOK_RETRY_CAP_SECONDS`, validated at startup. The pure `domain/retry_policy` module holds all three: `backoff`, `retry_delay` (`Retry-After` or backoff), and `classify` (2xx → success, 410 → endpoint gone, anything else or no response → retryable). The README shows the values that make retries visible in seconds; tests override them.
 
 **Disabled endpoints** ([ADR 0003](./adr/0003-disable-fails-pending-deliveries.md)): disabling an endpoint and failing its `pending` deliveries (reason `endpoint_disabled`) happen in one transaction. Attempts already `in progress` finish. Fan-out skips disabled endpoints, and the claim-time check covers races. Re-enabling flushes nothing; the operator uses replay-failed.
 
@@ -71,12 +71,12 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
 
 Exactly-once delivery over HTTP isn't possible, so we promise:
 
-- **No duplicate events**: the `Idempotency-Key` is required (400 if missing). The same key with the same payload returns the original event (`deduplicated: true`, no new deliveries); the same key with a different payload returns 422 (per the IETF Idempotency-Key draft). Implemented as insert-and-catch on the unique key, not check-then-insert, so concurrent resubmits can't race.
+- **No duplicate events**: the `Idempotency-Key` is required (400 if missing or blank). The same key with the same payload returns the original event (`deduplicated: true`, no new deliveries); the same key with a different payload returns 422 (per the IETF Idempotency-Key draft). "Same payload" means the same type and JSON-equal `data`: key order is ignored, but `1`, `1.0`, and `true` differ. Implemented as insert-and-catch on the unique key, not check-then-insert, so concurrent resubmits can't race.
 - **At most one delivery per event–endpoint pair**, enforced by a DB unique constraint.
 - **At-least-once attempts, receiver-dedupable**: every attempt and replay of a delivery carries the same `webhook-id`.
 - **No ordering guarantee** across events. The envelope `timestamp` lets receivers order events themselves.
 
-Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transaction_created`, `campaign_updated`, `member_account_linked`. `data` is free-form JSON, and payloads over 64 KiB are rejected with 413.
+Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transaction_created`, `campaign_updated`, `member_account_linked`. `data` is free-form JSON. An event whose serialized envelope (the bytes every attempt sends) is over 64 KiB is rejected with 413.
 
 ### Signing details
 
@@ -149,10 +149,10 @@ Planned now; file and test links get filled in during the final docs-vs-code pas
 | Requirement (brief) | Mechanism | Proven by |
 |---|---|---|
 | Configurable subscriptions | Endpoint with a set of event types; fan-out by type | pytest: fan-out; e2e 1 |
-| Reliable delivery | DB queue, backoff with jitter, leases | pytest: retry, lease reclaim, shutdown |
+| Reliable delivery | DB queue, backoff with jitter, leases | pytest: retry policy ([test_retry_policy.py](../backend/tests/test_retry_policy.py)), retry, lease reclaim, shutdown |
 | Authenticated delivery | Standard Webhooks HMAC | pytest: signing + `standardwebhooks` interop ([test_signing.py](../backend/tests/test_signing.py)); mock receiver verification ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)) |
 | Replay-able failures | Failure reason + Replay / replay-failed | pytest: replay; e2e 3 |
-| Unique delivery | Idempotency-Key, unique (event, endpoint), stable `webhook-id` | pytest: idempotency, constraint (resubmit and unique constraint: [test_events_api.py](../backend/tests/test_events_api.py), [test_app.py](../backend/tests/test_app.py)); e2e 2 |
+| Unique delivery | Idempotency-Key, unique (event, endpoint), stable `webhook-id` | pytest: idempotency, constraint (resubmit, 422 mismatch, concurrent resubmit, and unique constraint: [test_events_api.py](../backend/tests/test_events_api.py), [test_app.py](../backend/tests/test_app.py)); e2e 2 |
 | Observable delivery | Deliveries view, attempt log | e2e 2, 3 |
 | Endpoint management, secret once | Endpoints view | e2e 1 |
 | Event trigger, dedup surfaced | Trigger form | e2e 2 |
@@ -193,6 +193,7 @@ If time runs short, cut in this order: CI, then the Events list (keeping the tri
 - Postgres + `SKIP LOCKED` and separate worker processes (ADR 0001's scale-out path).
 - A per-endpoint in-flight cap, so one slow endpoint can't take every worker slot.
 - `Retry-After` in HTTP-date form, and streaming response capture that stops reading at 2KB.
+- A request-size limit before the body is parsed (today the 64 KiB check runs on the parsed event).
 - Delta polling (`updated_after` cursor merged into the cache by id), or SSE as an invalidation hint, instead of refetching loaded pages.
 - Endpoint pause/resume with a controlled drain, and "replay since T".
 - Secret rotation with dual signatures (supported by the Standard Webhooks header format).
