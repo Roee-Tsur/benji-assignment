@@ -10,7 +10,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException
 
-from webhooks.services.errors import NotFoundError
+from webhooks.services.errors import (
+    IdempotencyKeyReusedError,
+    NotFoundError,
+    PayloadTooLargeError,
+)
 
 PROBLEM_MEDIA_TYPE = "application/problem+json"
 
@@ -91,10 +95,18 @@ def install_problem_handlers(app: FastAPI) -> None:
     async def not_found(_request: Request, error: Exception) -> JSONResponse:
         return problem_response(404, str(error))
 
+    async def idempotency_key_reused(_request: Request, error: Exception) -> JSONResponse:
+        return problem_response(422, str(error), title="Idempotency key reused")
+
+    async def payload_too_large(_request: Request, error: Exception) -> JSONResponse:
+        return problem_response(413, str(error))
+
     async def unexpected(_request: Request, _error: Exception) -> JSONResponse:
         return problem_response(500)
 
     app.add_exception_handler(HTTPException, http_error)
     app.add_exception_handler(RequestValidationError, validation_error)
     app.add_exception_handler(NotFoundError, not_found)
+    app.add_exception_handler(IdempotencyKeyReusedError, idempotency_key_reused)
+    app.add_exception_handler(PayloadTooLargeError, payload_too_large)
     app.add_exception_handler(Exception, unexpected)
