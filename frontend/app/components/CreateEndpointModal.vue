@@ -1,18 +1,19 @@
 <script setup lang="ts">
 import type { FormError } from '@nuxt/ui'
+import { useClipboard } from '@vueuse/core'
 import type { EndpointCreated, EventType } from '~/api/client'
 import { eventTypeOptions } from '~/domain/eventTypes'
 
 const open = defineModel<boolean>('open', { required: true })
 
-const toast = useToast()
 const createEndpoint = useCreateEndpoint()
 const state = reactive({
   url: 'http://127.0.0.1:8000/mock/ok',
   eventTypes: eventTypeOptions.map(option => option.value) as EventType[]
 })
 const created = ref<EndpointCreated>()
-const copied = ref(false)
+// `legacy` falls back to `execCommand` where the Clipboard API is unavailable (non-HTTPS hosts).
+const { copy, copied } = useClipboard({ legacy: true })
 
 function validate(): FormError[] {
   return state.eventTypes.length === 0 ? [{ name: 'eventTypes', message: 'Pick at least one event type.' }] : []
@@ -28,21 +29,10 @@ function submit() {
   })
 }
 
-async function copySecret() {
-  if (!created.value) return
-  try {
-    await navigator.clipboard.writeText(created.value.secret)
-    copied.value = true
-  } catch {
-    toast.add({ title: 'Couldn\'t copy the secret', description: 'Select it and copy it manually.', color: 'error' })
-  }
-}
-
 // The secret is dropped on close: it is shown once and never again.
 watch(open, (isOpen) => {
   if (!isOpen) {
     created.value = undefined
-    copied.value = false
     createEndpoint.reset()
   }
 })
@@ -78,7 +68,7 @@ watch(open, (isOpen) => {
             :label="copied ? 'Copied' : 'Copy'"
             color="neutral"
             variant="outline"
-            @click="copySecret"
+            @click="copy(created.secret)"
           />
         </UFieldGroup>
       </div>

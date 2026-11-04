@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FormError } from '@nuxt/ui'
 import type { EventSubmitted, EventType } from '~/api/client'
+import { parseEventData } from '~/domain/eventData'
 import { eventTypeOptions, eventTypes } from '~/domain/eventTypes'
 
 useHead({ title: 'Events' })
@@ -17,24 +18,15 @@ watch(() => state.type, (type) => {
   state.json = JSON.stringify(eventTypes[type].sample, null, 2)
 }, { immediate: true })
 
-function parseData(json: string): Record<string, unknown> | undefined {
-  try {
-    const data: unknown = JSON.parse(json)
-    return typeof data === 'object' && data !== null && !Array.isArray(data) ? data as Record<string, unknown> : undefined
-  } catch {
-    return undefined
-  }
-}
-
 function validate(): FormError[] {
-  return parseData(state.json) ? [] : [{ name: 'json', message: 'Enter a JSON object.' }]
+  return parseEventData(state.json) ? [] : [{ name: 'json', message: 'Enter a JSON object.' }]
 }
 
 function submit() {
   submitted.value = undefined
   triggerEvent.mutate({
     type: state.type,
-    data: parseData(state.json)!,
+    data: parseEventData(state.json)!,
     // A fresh key per submit for now; a key that persists for visible dedup is #7.
     idempotencyKey: crypto.randomUUID()
   }, {
