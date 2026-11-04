@@ -139,3 +139,13 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Process:** the AI checked the repo for Claude-only pieces. Running the app (README, Makefile, CI) had none, only `CLAUDE.md` and the `work-ticket` skill. It proposed four changes.
 - **Where I steered:** I took two of them: the shared instructions file and the editor config. I dropped the one that would have marked my own workflow rules (AI usage log, one PR per ticket) as author-only. Reviewers will read and run the code, not write to the repo.
 - **Output:** the instructions moved to `AGENTS.md`, which Cursor reads, and `CLAUDE.md` now imports it with `@AGENTS.md`, so there is still one source. `.vscode/` (Cursor reads it too) recommends the Python, Ruff, Vue, ESLint and Tailwind extensions, points at `backend/.venv`, and runs ruff and ESLint fixes on save.
+
+### 15. Ticket #10: independent pre-submit review (2026-11-04)
+
+- **Asked:** run `/work-ticket 10` in a fresh session that did no build work: review the repo against the brief as a Benji reviewer would, run `/code-review` over the whole codebase, follow the README in a fresh clone, file each gap as an issue, and fix nothing.
+- **Where I steered:** the AI flagged that a fix-nothing ticket conflicts with the every-session AI usage entry. I chose a docs-only PR for this entry, and approved new `severity:*` labels.
+- **Process:**
+  - It read every source file, ran `/code-review` (xhigh), and probed suspected bugs directly: it compiled the claim SQL to rule out a correlation bug, and posted a `NaN` payload, which confirmed one.
+  - It ran the README demo in the browser from a throwaway clone on separate ports, leaving my running dev servers alone.
+  - The demo turned up the main finding: the idempotency key resets when you leave the Events page, so the README's dedup step creates a new event.
+- **Output:** a verdict with evidence for every requirement, posted on #10 (all met; AI usage note partial until transcripts land). 13 issues filed (#29–#41): 1 high, 4 medium, 8 low.
