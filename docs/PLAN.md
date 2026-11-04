@@ -19,8 +19,8 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
 | Frontend state | Server state in Vue Query only, no Pinia: [ADR 0004](./adr/0004-server-state-in-vue-query.md) |
 | Live updates | Polling (~1.5s while anything is non-terminal, backing off when idle) |
 | Demo/test receiver | Built-in mock receiver mounted in the API behind a setting |
-| Tests | pytest (backend behavior), Vitest (state layer), Playwright (3 e2e flows) |
-| CI | GitHub Actions: lint + typecheck + pytest + Playwright |
+| Tests | pytest (backend behavior), Vitest (state layer and components) |
+| CI | GitHub Actions: lint + typecheck + pytest + Vitest + stale API client check |
 
 ### Backend shape
 
@@ -32,8 +32,6 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
   - `fail` → 500
   - `flaky?n=` → fails the first *n* requests it sees per `webhook-id` (counted in memory, per app), then 200
   - `slow?s=` → sleeps, then 200; the only way to see `in progress` with your own eyes
-
-  Playwright uses the same receiver, so there is no separate test receiver.
 - **Thin routers**: Pydantic API schemas kept separate from ORM models. Errors are RFC 9457 `application/problem+json`.
 - Schema is created with `create_all` on startup.
 - IDs are prefixed (`ep_`, `evt_`, `dlv_`, `att_`). The delivery ID is the `webhook-id`.
@@ -101,8 +99,7 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
 - **Optimistic replay**: the row flips to `pending` immediately and rolls back with a toast if the request fails.
 - **Accessibility**:
   - status badges use color, an icon, and text, never color alone;
-  - rows expand from the keyboard and the slideover traps focus;
-  - Playwright runs an axe check on every view.
+  - rows expand from the keyboard and the slideover traps focus.
 - Desktop-first: an ops dashboard, with no mobile layout.
 
 ### Staying accurate over time
@@ -140,12 +137,6 @@ Event envelope: `{ id, type, timestamp, data }`. Supported types: `reward_transa
   - optimistic replay rolls back on error;
   - the trigger form shows the dedup notice and the 422 mismatch;
   - URL ↔ filter sync.
-- **Playwright**, against the built-in mock receiver:
-  1. create an endpoint and see the secret once;
-  2. trigger, watch it reach `succeeded` live, resubmit and see the dedup notice;
-  3. `flaky?n=<max attempts>` → `failed` → Replay → `succeeded`.
-
-  Each view also gets an axe accessibility check.
 
 ### Requirement traceability
 
@@ -153,16 +144,16 @@ Planned now; file and test links get filled in during the final docs-vs-code pas
 
 | Requirement (brief) | Mechanism | Proven by |
 |---|---|---|
-| Configurable subscriptions | Endpoint with a set of event types; fan-out by type | pytest: fan-out; e2e 1 |
+| Configurable subscriptions | Endpoint with a set of event types; fan-out by type | pytest: fan-out |
 | Reliable delivery | DB queue, backoff with jitter, leases | pytest: retry policy ([test_retry_policy.py](../backend/tests/test_retry_policy.py)); retry to success and exhaustion, 410, `Retry-After`, fencing, lease reclaim, the pool, shutdown ([test_worker.py](../backend/tests/test_worker.py)) |
 | Authenticated delivery | Standard Webhooks HMAC | pytest: signing + `standardwebhooks` interop ([test_signing.py](../backend/tests/test_signing.py)); mock receiver verification ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)) |
-| Replay-able failures | Failure reason + Replay / replay-failed | pytest: replay, replay-failed, 409s, flaky → failed → replay → succeeded ([test_replay.py](../backend/tests/test_replay.py)); disable and the claim re-check ([test_disable.py](../backend/tests/test_disable.py)); mock modes ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)); e2e 3 |
-| Unique delivery | Idempotency-Key, unique (event, endpoint), stable `webhook-id` | pytest: idempotency, constraint (resubmit, 422 mismatch, concurrent resubmit, and unique constraint: [test_events_api.py](../backend/tests/test_events_api.py), [test_app.py](../backend/tests/test_app.py)); e2e 2 |
-| Observable delivery | Deliveries view, attempt log | pytest: filters, keyset paging, counts ([test_deliveries_api.py](../backend/tests/test_deliveries_api.py)); Vitest: URL ↔ filter sync, slideover deep link ([deliveriesPage.test.ts](../frontend/test/nuxt/deliveriesPage.test.ts)); e2e 2, 3 |
-| Endpoint management, secret once | Endpoints view | Vitest: secret gone from the page and every cache after the modal closes, inline URL validation ([createEndpointModal.test.ts](../frontend/test/nuxt/createEndpointModal.test.ts)); disable refetches deliveries, per-row in-flight state, replay-failed ([endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)); e2e 1 |
-| Event trigger, dedup surfaced | Trigger form, `GET /events` | Vitest: key lifecycle, dedup notice, 422 mismatch inline, invalid JSON blocked ([triggerEventForm.test.ts](../frontend/test/nuxt/triggerEventForm.test.ts), [useIdempotencyKey.test.ts](../frontend/test/nuxt/useIdempotencyKey.test.ts), [eventData.test.ts](../frontend/test/unit/eventData.test.ts)); pytest: recent events with fan-out counts ([test_events_api.py](../backend/tests/test_events_api.py)); e2e 2 |
-| Live delivery view | Polling all loaded pages + detail | Vitest: polling backs off when terminal and resumes, every loaded page refreshes, detail polling ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)), countdown and highlights ([deliveryProgress.test.ts](../frontend/test/unit/deliveryProgress.test.ts)); e2e 2, 3 |
-| Attempt inspection, replay | Delivery slideover, optimistic replay | Vitest: optimistic replay and rollback ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)); e2e 3 |
+| Replay-able failures | Failure reason + Replay / replay-failed | pytest: replay, replay-failed, 409s, flaky → failed → replay → succeeded ([test_replay.py](../backend/tests/test_replay.py)); disable and the claim re-check ([test_disable.py](../backend/tests/test_disable.py)); mock modes ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)) |
+| Unique delivery | Idempotency-Key, unique (event, endpoint), stable `webhook-id` | pytest: idempotency, constraint (resubmit, 422 mismatch, concurrent resubmit, and unique constraint: [test_events_api.py](../backend/tests/test_events_api.py), [test_app.py](../backend/tests/test_app.py)) |
+| Observable delivery | Deliveries view, attempt log | pytest: filters, keyset paging, counts ([test_deliveries_api.py](../backend/tests/test_deliveries_api.py)); Vitest: URL ↔ filter sync, slideover deep link ([deliveriesPage.test.ts](../frontend/test/nuxt/deliveriesPage.test.ts)) |
+| Endpoint management, secret once | Endpoints view | Vitest: secret gone from the page and every cache after the modal closes, inline URL validation ([createEndpointModal.test.ts](../frontend/test/nuxt/createEndpointModal.test.ts)); disable refetches deliveries, per-row in-flight state, replay-failed ([endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)) |
+| Event trigger, dedup surfaced | Trigger form, `GET /events` | Vitest: key lifecycle, dedup notice, 422 mismatch inline, invalid JSON blocked ([triggerEventForm.test.ts](../frontend/test/nuxt/triggerEventForm.test.ts), [useIdempotencyKey.test.ts](../frontend/test/nuxt/useIdempotencyKey.test.ts), [eventData.test.ts](../frontend/test/unit/eventData.test.ts)); pytest: recent events with fan-out counts ([test_events_api.py](../backend/tests/test_events_api.py)) |
+| Live delivery view | Polling all loaded pages + detail | Vitest: polling backs off when terminal and resumes, every loaded page refreshes, detail polling ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)), countdown and highlights ([deliveryProgress.test.ts](../frontend/test/unit/deliveryProgress.test.ts)) |
+| Attempt inspection, replay | Delivery slideover, optimistic replay | Vitest: optimistic replay and rollback ([deliveries.test.ts](../frontend/test/nuxt/deliveries.test.ts)) |
 | Async UX, consistent errors | Vue Query composables, `ApiError`, `useLoadError` | Vitest `ApiError` ([api-errors.test.ts](../frontend/test/unit/api-errors.test.ts), [endpoints.test.ts](../frontend/test/nuxt/endpoints.test.ts)), trigger form incl. the zero fan-out notice ([triggerEventForm.test.ts](../frontend/test/nuxt/triggerEventForm.test.ts)), a failed load's error surviving retries and key changes ([useLoadError.test.ts](../frontend/test/nuxt/useLoadError.test.ts)), time and count formatting ([format.test.ts](../frontend/test/unit/format.test.ts)); before/after screenshots ([docs/screenshots](./screenshots/)) |
 | API / state / UI separation | `api/`, `composables/`, components | Code layout; ESLint layering rule ([eslint.config.mjs](../frontend/eslint.config.mjs)) |
 
@@ -176,9 +167,8 @@ The role is frontend-leaning, so the dashboard gets the extra depth, and the bac
 2. **Deepen the backend:** retries, leases and fencing, replay, disable, shutdown, plus the pytest suite.
 3. **Deepen the dashboard:** deliveries table, filters, attempt log, retry countdown, async UX.
 4. **UI polish pass** (#11): a fresh session uses the app in the browser and tightens visual hierarchy, consistency, empty states, and microcopy.
-5. Playwright e2e.
-6. CI.
-7. **Final pass:** traceability links, a docs-vs-code check, a separate AI review session against `ASSIGNMENT.md`, and a README with a GIF of the live view and screenshots.
+5. CI.
+6. **Final pass:** traceability links, a docs-vs-code check, a separate AI review session against `ASSIGNMENT.md`, and a README with a GIF of the live view and screenshots.
 
 If time runs short, cut in this order: CI, then the Events list (keeping the trigger form), then the count chips. The backend tests, the dashboard requirements, and the polish pass are never cut.
 
@@ -195,6 +185,7 @@ If time runs short, cut in this order: CI, then the Events list (keeping the tri
 
 ## With more time
 
+- Playwright e2e against the mock receiver, cut for time: create an endpoint and see the secret once; trigger, watch it reach `succeeded` live, resubmit and see the dedup notice; `flaky?n=<max attempts>` → `failed` → Replay → `succeeded`. Each view would also get an axe accessibility check. Today pytest and Vitest cover these flows layer by layer, not end to end in a browser.
 - Postgres + `SKIP LOCKED` and separate worker processes (ADR 0001's scale-out path).
 - A per-endpoint in-flight cap, so one slow endpoint can't take every worker slot.
 - `Retry-After` in HTTP-date form, and streaming response capture that stops reading at 2KB.
