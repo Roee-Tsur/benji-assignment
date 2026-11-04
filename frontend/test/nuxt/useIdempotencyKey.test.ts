@@ -18,6 +18,26 @@ describe('useIdempotencyKey', () => {
     expect(key.value).not.toBe(first)
   })
 
+  it('keeps the key, hand-edited or not, when remounted with the same submission', async () => {
+    const first = await withSetup(() => useIdempotencyKey(() => 'a'))
+    const generated = first.key.value
+    expect((await withSetup(() => useIdempotencyKey(() => 'a'))).key.value).toBe(generated)
+
+    first.key.value = 'my-key'
+    await nextTick()
+
+    expect((await withSetup(() => useIdempotencyKey(() => 'a'))).key.value).toBe('my-key')
+  })
+
+  it('replaces the key when remounted with a different submission', async () => {
+    const { key } = await withSetup(() => useIdempotencyKey(() => 'a'))
+    const first = key.value
+
+    const remounted = await withSetup(() => useIdempotencyKey(() => 'b'))
+
+    expect(remounted.key.value).not.toBe(first)
+  })
+
   it('replaces the key on renew', async () => {
     const { key, renew } = await withSetup(() => useIdempotencyKey(() => 'a'))
     const first = key.value
