@@ -1,6 +1,6 @@
 from typing import Self
 
-from pydantic import model_validator
+from pydantic import PositiveInt, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from webhooks.domain.retry_policy import RetryPolicy
@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     mock_receiver_enabled: bool = True
     worker_enabled: bool = True
     worker_poll_interval_seconds: float = 0.5
+    worker_concurrency: PositiveInt = 10  # attempts in flight at once
+    # Matches the request timeout: an attempt still running after that is stuck, not slow.
+    worker_shutdown_timeout_seconds: float = 10.0
 
     webhook_request_timeout_seconds: float = 10.0
     webhook_lease_seconds: float = 30.0

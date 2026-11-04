@@ -1,6 +1,6 @@
 from httpx import AsyncClient
 
-from tests.conftest import create_endpoint
+from tests.conftest import FakeClock, create_endpoint
 
 
 async def test_create_returns_the_signing_secret_once(client: AsyncClient) -> None:
@@ -16,8 +16,9 @@ async def test_create_returns_the_signing_secret_once(client: AsyncClient) -> No
     assert "secret" not in listed[0]
 
 
-async def test_list_is_newest_first(client: AsyncClient) -> None:
+async def test_list_is_newest_first(client: AsyncClient, clock: FakeClock) -> None:
     first = await create_endpoint(client)
+    clock.advance(1)
     second = await create_endpoint(client)
 
     listed = (await client.get("/endpoints")).json()

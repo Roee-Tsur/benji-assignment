@@ -98,8 +98,8 @@ async def list_deliveries(client: AsyncClient) -> list[dict[str, Any]]:
     return response.json()
 
 
-async def eventually(predicate: Callable[[], bool], timeout: float = 2.0) -> None:
+async def eventually(predicate: Callable[[], bool], within: float = 2.0) -> None:
     """Waits (in real time) until `predicate` holds, for tests that run the worker loop."""
-    async with asyncio.timeout(timeout):
-        while not predicate():
+    async with asyncio.timeout(within):
+        while not predicate():  # noqa: ASYNC110  # polling a plain predicate is the point
             await asyncio.sleep(0.005)

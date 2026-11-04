@@ -35,9 +35,8 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
                     yield
                 finally:
                     if task is not None:
-                        task.cancel()  # graceful shutdown (lease release) is #4
-                        with contextlib.suppress(asyncio.CancelledError):
-                            await task
+                        worker.stop()  # finishes or releases in-flight attempts, then returns
+                        await task
         finally:
             await engine.dispose()
 
