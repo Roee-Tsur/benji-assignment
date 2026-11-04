@@ -32,12 +32,13 @@ function replay(endpoint: Endpoint) {
   })
 }
 
+// Fixed widths, so toggling an endpoint or a refetch doesn't shift the columns; the URL takes the rest.
 const columns: TableColumn<Endpoint>[] = [
-  { accessorKey: 'url', header: 'URL' },
-  { accessorKey: 'event_types', header: 'Event types' },
-  { accessorKey: 'enabled', header: 'Status' },
-  { accessorKey: 'created_at', header: 'Created' },
-  { id: 'actions', header: 'Actions' }
+  { accessorKey: 'url', header: 'URL', meta: { class: { td: 'truncate' } } },
+  { accessorKey: 'event_types', header: 'Event types', meta: { class: { th: 'w-96', td: 'whitespace-normal' } } },
+  { accessorKey: 'enabled', header: 'Status', meta: { class: { th: 'w-36' } } },
+  { accessorKey: 'created_at', header: 'Created', meta: { class: { th: 'w-28' } } },
+  { id: 'actions', header: 'Actions', meta: { class: { th: 'w-44' } } }
 ]
 </script>
 
@@ -65,6 +66,7 @@ const columns: TableColumn<Endpoint>[] = [
         v-else
         :data="endpoints.data.value ?? []"
         :columns="columns"
+        :ui="{ base: 'w-full table-fixed' }"
       >
         <template #empty>
           <TableSkeleton v-if="endpoints.isPending.value" />
@@ -78,7 +80,10 @@ const columns: TableColumn<Endpoint>[] = [
           />
         </template>
         <template #url-cell="{ row }">
-          <span class="font-mono text-sm">{{ row.original.url }}</span>
+          <span
+            class="font-mono text-sm"
+            :title="row.original.url"
+          >{{ row.original.url }}</span>
         </template>
         <template #event_types-cell="{ row }">
           <div class="flex flex-wrap gap-1">

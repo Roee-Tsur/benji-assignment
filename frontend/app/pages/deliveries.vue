@@ -41,13 +41,15 @@ const endpointSelection = computed({
   }
 })
 
+// Fixed widths (the table is `table-fixed`), so a row's status, countdown or "ago" changing doesn't
+// shift every column; the endpoint takes the rest and truncates.
 const columns: TableColumn<Delivery>[] = [
-  { accessorKey: 'status', header: 'Status' },
-  { id: 'progress', header: 'Progress' },
-  { accessorKey: 'event_type', header: 'Event type' },
-  { accessorKey: 'endpoint_url', header: 'Endpoint' },
-  { accessorKey: 'created_at', header: 'Created' },
-  { accessorKey: 'id', header: 'Delivery' }
+  { accessorKey: 'status', header: 'Status', meta: { class: { th: 'w-32' } } },
+  { id: 'progress', header: 'Progress', meta: { class: { th: 'w-56' } } },
+  { accessorKey: 'event_type', header: 'Event type', meta: { class: { th: 'w-52' } } },
+  { accessorKey: 'endpoint_url', header: 'Endpoint', meta: { class: { td: 'truncate' } } },
+  { accessorKey: 'created_at', header: 'Created', meta: { class: { th: 'w-24' } } },
+  { accessorKey: 'id', header: 'Delivery', meta: { class: { th: 'w-36' } } }
 ]
 </script>
 
@@ -107,7 +109,7 @@ const columns: TableColumn<Delivery>[] = [
           :get-row-id="(row: Delivery) => row.id"
           :loading="deliveries.isPlaceholderData.value"
           :meta="{ class: { tr: row => highlighted.has(row.original.id) ? 'bg-primary/10' : '' } }"
-          :ui="{ tr: 'transition-colors duration-1000' }"
+          :ui="{ base: 'w-full table-fixed', tr: 'transition-colors duration-1000' }"
           @select="(_event, row) => openDeliveryId = row.original.id"
         >
           <template #empty>
@@ -140,7 +142,10 @@ const columns: TableColumn<Delivery>[] = [
             {{ eventTypes[row.original.event_type].label }}
           </template>
           <template #endpoint_url-cell="{ row }">
-            <span class="font-mono text-sm">{{ row.original.endpoint_url }}</span>
+            <span
+              class="font-mono text-sm"
+              :title="row.original.endpoint_url"
+            >{{ row.original.endpoint_url }}</span>
           </template>
           <template #created_at-cell="{ row }">
             <RelativeTime :datetime="row.original.created_at" />

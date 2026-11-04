@@ -12,7 +12,11 @@ const links: NavigationMenuItem[] = [
   <UDashboardGroup>
     <UDashboardSidebar>
       <template #header>
-        <div class="flex items-center gap-2">
+        <!-- Home is the first view (Deliveries): `/` redirects there. -->
+        <NuxtLink
+          to="/"
+          class="flex items-center gap-2 rounded-md outline-primary focus-visible:outline-2"
+        >
           <span class="flex size-7 items-center justify-center rounded-md bg-primary text-inverted">
             <UIcon
               name="i-lucide-webhook"
@@ -20,7 +24,7 @@ const links: NavigationMenuItem[] = [
             />
           </span>
           <span class="font-semibold text-highlighted">Benji Webhooks</span>
-        </div>
+        </NuxtLink>
       </template>
 
       <UNavigationMenu
