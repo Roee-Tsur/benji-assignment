@@ -71,6 +71,24 @@ class EventSubmitted(BaseModel):
         )
 
 
+class EventOut(BaseModel):
+    id: str
+    type: EventType
+    idempotency_key: str
+    created_at: datetime
+    delivery_count: int = Field(description="How many endpoints it fanned out to.")
+
+    @classmethod
+    def from_model(cls, event: Event, *, delivery_count: int) -> Self:
+        return cls(
+            id=event.id,
+            type=event.type,
+            idempotency_key=event.idempotency_key,
+            created_at=event.created_at,
+            delivery_count=delivery_count,
+        )
+
+
 class DeliveryOut(BaseModel):
     id: str = Field(description="Also the `webhook-id` header of every attempt.")
     event_id: str

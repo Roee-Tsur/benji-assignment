@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 from httpx import AsyncClient
 
-from tests.conftest import create_endpoint, list_deliveries, submit_event
+from tests.conftest import FakeClock, create_endpoint, list_deliveries, submit_event
 
 
 async def test_fans_out_to_enabled_subscribed_endpoints_only(client: AsyncClient) -> None:
@@ -168,3 +168,41 @@ async def test_accepts_payloads_just_under_64_kib(client: AsyncClient) -> None:
     event = await submit_event(client, key="fits", data={"blob": "x" * (64 * 1024 - 200)})
 
     assert event["deduplicated"] is False
+
+
+async def test_lists_recent_events_newest_first_with_fan_out_counts(
+    client: AsyncClient, clock: FakeClock
+) -> None:
+    await create_endpoint(client, event_types=["reward_transaction_created"])
+    await create_endpoint(client, event_types=["reward_transaction_created", "campaign_updated"])
+    older = await submit_event(client, key="a", event_type="reward_transaction_created")
+    clock.advance(1)
+    newer = await submit_event(client, key="b", event_type="campaign_updated")
+    clock.advance(1)
+    await submit_event(client, key="a", event_type="reward_transaction_created")  # deduplicated
+
+    response = await client.get("/events")
+
+    assert response.status_code == 200
+    assert [(e["id"], e["delivery_count"]) for e in response.json()] == [
+        (newer["id"], 1),
+        (older["id"], 2),
+    ]
+    assert response.json()[0] == {
+        "id": newer["id"],
+        "type": "campaign_updated",
+        "idempotency_key": "b",
+        "created_at": newer["created_at"],
+        "delivery_count": 1,
+    }
+
+
+async def test_lists_at_most_the_newest_20_events(client: AsyncClient, clock: FakeClock) -> None:
+    for i in range(21):
+        await submit_event(client, key=f"k{i}")
+        clock.advance(1)
+
+    events = (await client.get("/events")).json()
+
+    assert len(events) == 20
+    assert events[0]["idempotency_key"] == "k20"

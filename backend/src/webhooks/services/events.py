@@ -1,4 +1,5 @@
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -81,6 +82,28 @@ async def submit_event(
     session.add_all(deliveries)
     await session.commit()
     return SubmittedEvent(event, len(deliveries), False)
+
+
+@dataclass(frozen=True)
+class RecentEvent:
+    event: Event
+    delivery_count: int
+
+
+async def list_recent_events(session: AsyncSession, *, limit: int = 20) -> Sequence[RecentEvent]:
+    """The newest events, each with how many deliveries it fanned out to."""
+    delivery_count = (
+        select(func.count())
+        .select_from(Delivery)
+        .where(Delivery.event_id == Event.id)
+        .scalar_subquery()
+    )
+    query = (
+        select(Event, delivery_count)
+        .order_by(Event.created_at.desc(), Event.id.desc())
+        .limit(limit)
+    )
+    return [RecentEvent(event, count) for event, count in await session.execute(query)]
 
 
 async def _resubmitted(
