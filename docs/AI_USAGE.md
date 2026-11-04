@@ -53,3 +53,11 @@ Tooling: Claude Code (Opus) in the desktop app.
 - **Choices it made and flagged in the PR:** the 64 KiB limit measures the serialized envelope (what receivers get), a missing key is a 400 by declaring the header optional and checking it in the router, and `RetryPolicy` owns the attempt budget's size.
 - **Review:** `/code-review` found 7 issues. It fixed 5: `True == 1 == 1.0` let different payloads dedupe, bad retry settings failed per request instead of at startup, blank keys were accepted, other integrity errors were masked, and an odd `Retry-After` sentinel. It recorded the request-size guard under "With more time" and the PLAN wording under docs.
 - **Output:** `domain/retry_policy.py`, hardened `POST /events`, 107 pytest tests.
+
+### 5. Ticket #4: worker reliability (2026-11-04)
+
+- **Asked:** run `/work-ticket 4` in its own worktree, stacked on the unmerged #3 branch (itself on #1), while #2 kept the main checkout.
+- **Process:** test-first. A fake clock went into the test app first, so retries and leases are driven by moving time rather than sleeping. Then 18 failing worker tests covered every acceptance criterion: retry to success and exhaustion, 410, `Retry-After`, fresh signatures, 2 KB truncation, fencing, reclaim, the pool, and shutdown. The code came after. The stale-write test was mutation-checked: dropping the `lease_token` fence makes it fail.
+- **Choices it made and flagged in the PR:** interrupted attempts (reclaimed or cut off by shutdown) go through the same settle rule as any retryable outcome, so the budget's "at most 6" holds even across restarts. The request timeout now bounds the whole request, because httpx's is per read.
+- **Review:** `/code-review` (xhigh) found 15 candidates. It fixed 3: a lease no longer than the request timeout is now rejected at startup, one failed release no longer stops shutdown releasing the rest, and the shutdown wait defaults to the request timeout instead of a copy of it. It documented the shutdown settle rule in the plan and skipped the minor ones, listed in the PR.
+- **Output:** a continuous worker pool with fenced write-back, lease reclaim, and graceful shutdown; 127 pytest tests.

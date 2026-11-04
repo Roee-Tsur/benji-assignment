@@ -6,7 +6,8 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
-from webhooks.domain.enums import AttemptOutcome, DeliveryStatus
+from webhooks.domain.enums import AttemptOutcome, DeliveryStatus, FailureReason
+from webhooks.domain.retry_policy import RetryPolicy, classify
 from webhooks.ids import new_id
 from webhooks.models import Attempt, Delivery, Endpoint, Event
 from webhooks.services.errors import NotFoundError
@@ -15,11 +16,24 @@ MAX_RESPONSE_BODY_BYTES = 2048
 
 
 @dataclass(frozen=True)
+class Lease:
+    """A worker's claim on one delivery. Its results count only while `token` is still current.
+
+    `attempts_used` is as of the claim: only the lease holder changes it while the lease holds.
+    """
+
+    delivery_id: str
+    token: str
+    attempts_used: int
+    attempt_budget: int
+
+
+@dataclass(frozen=True)
 class ClaimedDelivery:
     """Everything the worker needs to make an attempt without touching the database."""
 
-    delivery_id: str
-    lease_token: str
+    lease: Lease
+    claimed_at: datetime
     url: str
     secret: str
     body: bytes
@@ -33,11 +47,15 @@ class AttemptResult:
     outcome: AttemptOutcome
     response_status: int | None = None
     response_body: bytes | None = None
+    retry_after: str | None = None
     error: str | None = None
 
-    @property
-    def succeeded(self) -> bool:
-        return self.response_status is not None and 200 <= self.response_status < 300
+
+@dataclass(frozen=True)
+class _Settlement:
+    status: DeliveryStatus
+    failure_reason: FailureReason | None = None
+    next_attempt_at: datetime | None = None  # only when the delivery goes back to pending
 
 
 async def list_deliveries(session: AsyncSession, *, limit: int = 50) -> Sequence[Delivery]:
@@ -90,18 +108,18 @@ async def claim_next(
         .limit(1)
         .scalar_subquery()
     )
-    lease_token = new_id("lease")
+    token = new_id("lease")
     claimed = (
         await session.execute(
             update(Delivery)
             .where(Delivery.id == due, Delivery.status == DeliveryStatus.PENDING)
             .values(
                 status=DeliveryStatus.IN_PROGRESS,
-                lease_token=lease_token,
+                lease_token=token,
                 lease_expires_at=now + lease_duration,
                 updated_at=now,
             )
-            .returning(Delivery.id)
+            .returning(Delivery.id, Delivery.attempts_used, Delivery.attempt_budget)
         )
     ).first()
     if claimed is None:
@@ -118,33 +136,47 @@ async def claim_next(
         )
     ).one()
     await session.commit()
-    return ClaimedDelivery(claimed.id, lease_token, url, secret, body)
+    lease = Lease(claimed.id, token, claimed.attempts_used, claimed.attempt_budget)
+    return ClaimedDelivery(lease, now, url, secret, body)
 
 
 async def record_attempt(
-    session: AsyncSession, claimed: ClaimedDelivery, result: AttemptResult
-) -> DeliveryStatus:
-    """Records the attempt and settles the delivery. No retries yet: a failure is final."""
-    status = DeliveryStatus.SUCCEEDED if result.succeeded else DeliveryStatus.FAILED
+    session: AsyncSession, lease: Lease, result: AttemptResult, policy: RetryPolicy
+) -> DeliveryStatus | None:
+    """Records the attempt and settles the delivery: succeeded, failed, or pending for a retry.
+
+    The write is fenced on the lease token. If the lease was lost (it expired and was reclaimed),
+    a newer attempt may already exist, so nothing is written and this returns `None`.
+    """
+    attempts_used = lease.attempts_used + 1
+    settlement = _settle(result, attempts_used, lease.attempt_budget, policy)
+    values: dict[str, object] = {
+        "status": settlement.status,
+        "failure_reason": settlement.failure_reason,
+        "attempt_count": Delivery.attempt_count + 1,
+        "attempts_used": attempts_used,
+        "lease_token": None,
+        "lease_expires_at": None,
+        "updated_at": result.finished_at,
+    }
+    if settlement.next_attempt_at is not None:
+        values["next_attempt_at"] = settlement.next_attempt_at
     number = (
         await session.scalars(
             update(Delivery)
-            .where(Delivery.id == claimed.delivery_id)
-            .values(
-                status=status,
-                attempt_count=Delivery.attempt_count + 1,
-                attempts_used=Delivery.attempts_used + 1,
-                lease_token=None,
-                lease_expires_at=None,
-                updated_at=result.finished_at,
-            )
+            .where(Delivery.id == lease.delivery_id, Delivery.lease_token == lease.token)
+            .values(values)
             .returning(Delivery.attempt_count)
         )
-    ).one()
+    ).one_or_none()
+    if number is None:
+        await session.rollback()
+        return None
+
     session.add(
         Attempt(
             id=new_id("att"),
-            delivery_id=claimed.delivery_id,
+            delivery_id=lease.delivery_id,
             number=number,
             started_at=result.started_at,
             finished_at=result.finished_at,
@@ -156,7 +188,62 @@ async def record_attempt(
         )
     )
     await session.commit()
-    return status
+    return settlement.status
+
+
+async def reclaim_expired(
+    session: AsyncSession, *, now: datetime, lease_duration: timedelta, policy: RetryPolicy
+) -> int:
+    """Records each expired lease as an `interrupted` attempt and settles its delivery.
+
+    An interrupted attempt spends the budget like any failed one, so a delivery that keeps
+    killing its worker still fails in the end. Each write is fenced on the token read here: if
+    the holder writes back first, its result stands and this reclaim of it changes nothing.
+    """
+    expired = await session.execute(
+        select(
+            Delivery.id,
+            Delivery.lease_token,
+            Delivery.lease_expires_at,
+            Delivery.attempts_used,
+            Delivery.attempt_budget,
+        ).where(Delivery.status == DeliveryStatus.IN_PROGRESS, Delivery.lease_expires_at <= now)
+    )
+    reclaimed = 0
+    for delivery_id, token, expires_at, attempts_used, attempt_budget in expired.all():
+        if token is None or expires_at is None:  # in progress always holds a lease
+            continue
+        lease = Lease(delivery_id, token, attempts_used, attempt_budget)
+        result = interrupted(started_at=expires_at - lease_duration, now=now, why="lease expired")
+        if await record_attempt(session, lease, result, policy) is not None:
+            reclaimed += 1
+    return reclaimed
+
+
+def interrupted(*, started_at: datetime, now: datetime, why: str) -> AttemptResult:
+    """An attempt whose outcome was never recorded. Whether it reached the receiver is unknown."""
+    return AttemptResult(
+        started_at=started_at,
+        finished_at=now,
+        request_headers={},
+        outcome=AttemptOutcome.INTERRUPTED,
+        error=why,
+    )
+
+
+def _settle(
+    result: AttemptResult, attempts_used: int, attempt_budget: int, policy: RetryPolicy
+) -> _Settlement:
+    match classify(result.response_status):
+        case "success":
+            return _Settlement(DeliveryStatus.SUCCEEDED)
+        case "endpoint_gone":
+            return _Settlement(DeliveryStatus.FAILED, FailureReason.ENDPOINT_GONE)
+        case "retryable" if attempts_used >= attempt_budget:
+            return _Settlement(DeliveryStatus.FAILED, FailureReason.ATTEMPTS_EXHAUSTED)
+        case "retryable":
+            delay = policy.retry_delay(attempts_used, result.retry_after)
+            return _Settlement(DeliveryStatus.PENDING, next_attempt_at=result.finished_at + delay)
 
 
 def _truncate(body: bytes | None) -> str | None:

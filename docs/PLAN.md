@@ -43,10 +43,10 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
 ### Delivery lifecycle
 
 1. **Submit**: `POST /events` with a required `Idempotency-Key`. In one transaction it stores the Event and creates one Delivery (`pending`) per *enabled* endpoint subscribed to the type. This is a transactional outbox: endpoints are snapshotted at submit time. The envelope is serialized once and the bytes are stored; every attempt sends exactly those bytes.
-2. **Claim**: a continuous worker pool keeps up to 10 attempts in flight and claims more as soon as a slot frees, so it never waits on a batch. A claim is a single `UPDATE … RETURNING` that:
+2. **Claim**: a continuous worker pool keeps up to 10 attempts in flight (`WORKER_CONCURRENCY`) and claims more as soon as a slot frees, so it never waits on a batch. A claim is a single `UPDATE … RETURNING` that:
    - picks due `pending` rows;
    - sets `in progress`, a fresh `lease_token`, and a 30s lease expiry.
-3. **Attempt**: just before sending, the worker re-checks the endpoint is enabled. It signs with a fresh `webhook-timestamp`, so replays aren't rejected by receivers' 5-minute tolerance, then POSTs with a 10s timeout. No DB transaction is held open during the HTTP call. The response body is stored truncated to 2KB. Each Attempt records:
+3. **Attempt**: just before sending, the worker re-checks the endpoint is enabled. It signs with a fresh `webhook-timestamp`, so replays aren't rejected by receivers' 5-minute tolerance, then POSTs with a 10s timeout that bounds the whole request, not just each read. No DB transaction is held open during the HTTP call. The response body is stored truncated to 2KB. Each Attempt records:
    - timing;
    - the request headers sent;
    - the truncated response body;
@@ -56,7 +56,7 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
    - 2xx → `succeeded`.
    - 410 → `failed`, reason `endpoint_gone`; no retry.
    - Anything else (including 3xx, since redirects aren't followed), timeouts, and connection errors → retry, or `failed` with reason `attempts_exhausted` once the attempt budget is spent.
-6. **Lease reclaim**: an expired lease is recorded as an `interrupted` attempt, which counts against the budget so a poison delivery can't loop forever. The delivery returns to `pending`.
+6. **Lease reclaim**: an expired lease is recorded as an `interrupted` attempt, which counts against the budget so a poison delivery can't loop forever. An interrupted attempt is settled like any other retryable outcome: the delivery returns to `pending` after backoff, or fails with `attempts_exhausted` if that was the last attempt of its budget. The lease must outlast a request (checked at startup), or slow attempts would be reclaimed while still in flight.
 7. **Replay** (`POST /deliveries/{id}/replay`): a `failed` delivery returns to `pending` with a fresh attempt budget. Attempt numbers keep counting up and it keeps the same `webhook-id`. Replaying anything not `failed`, or a delivery whose endpoint is disabled, returns 409. `POST /endpoints/{id}/replay-failed` replays every failed delivery of an endpoint in one conditional `UPDATE`, for recovery after an outage.
 
 **Retry policy:** 6 attempts per budget, exponential backoff with full jitter (base 2s, cap 5min). `Retry-After` is honored in its delta-seconds form and clamped to the cap. Settings: `WEBHOOK_RETRY_MAX_ATTEMPTS`, `WEBHOOK_RETRY_BASE_SECONDS`, `WEBHOOK_RETRY_CAP_SECONDS`, validated at startup. The pure `domain/retry_policy` module holds all three: `backoff`, `retry_delay` (`Retry-After` or backoff), and `classify` (2xx → success, 410 → endpoint gone, anything else or no response → retryable). The README shows the values that make retries visible in seconds; tests override them.
@@ -65,7 +65,7 @@ Produced in an AI-assisted design interview (see [AI_USAGE.md](./AI_USAGE.md)). 
 
 **SQLite specifics:** WAL mode, `busy_timeout` set, and an index on `(status, next_attempt_at)`.
 
-**Graceful shutdown:** stop claiming, give in-flight attempts up to the request timeout to finish, then record any still running as `interrupted` and release their leases back to `pending`. Without this, rows would sit `in progress` for 30s after a restart.
+**Graceful shutdown:** stop claiming, give in-flight attempts up to the request timeout to finish (`WORKER_SHUTDOWN_TIMEOUT_SECONDS` overrides it), then record any still running as `interrupted` and release their leases. They settle like a reclaimed lease: back to `pending` after backoff, or `failed` if it was the budget's last attempt, so the budget still means "at most 6 attempts". Without this, rows would sit `in progress` for 30s after a restart.
 
 ### Guarantees (stated precisely)
 
@@ -152,7 +152,7 @@ Planned now; file and test links get filled in during the final docs-vs-code pas
 | Requirement (brief) | Mechanism | Proven by |
 |---|---|---|
 | Configurable subscriptions | Endpoint with a set of event types; fan-out by type | pytest: fan-out; e2e 1 |
-| Reliable delivery | DB queue, backoff with jitter, leases | pytest: retry policy ([test_retry_policy.py](../backend/tests/test_retry_policy.py)), retry, lease reclaim, shutdown |
+| Reliable delivery | DB queue, backoff with jitter, leases | pytest: retry policy ([test_retry_policy.py](../backend/tests/test_retry_policy.py)); retry to success and exhaustion, 410, `Retry-After`, fencing, lease reclaim, the pool, shutdown ([test_worker.py](../backend/tests/test_worker.py)) |
 | Authenticated delivery | Standard Webhooks HMAC | pytest: signing + `standardwebhooks` interop ([test_signing.py](../backend/tests/test_signing.py)); mock receiver verification ([test_mock_receiver.py](../backend/tests/test_mock_receiver.py)) |
 | Replay-able failures | Failure reason + Replay / replay-failed | pytest: replay; e2e 3 |
 | Unique delivery | Idempotency-Key, unique (event, endpoint), stable `webhook-id` | pytest: idempotency, constraint (resubmit, 422 mismatch, concurrent resubmit, and unique constraint: [test_events_api.py](../backend/tests/test_events_api.py), [test_app.py](../backend/tests/test_app.py)); e2e 2 |
